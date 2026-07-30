@@ -1,0 +1,18 @@
+# Build output
+bin/
+obj/
+
+# Release artefacts (publish\ is 153 MB, dist\ is the 49 MB installer)
+publish/
+dist/
+
+# IDE
+.vs/
+.idea/
+*.user
+*.suo
+*.userprefs
+
+# Never commit a real API key or local settings
+*.secret
+settings.local.json
