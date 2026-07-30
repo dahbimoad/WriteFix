@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="WriteFix">
+  <!-- Message bubble: three rounded corners, square bottom-left doing the tail's job. -->
+  <path d="M20 6 H44 C52.8 6 60 13.2 60 22 V40 C60 48.8 52.8 56 44 56 H6 V22 C6 13.2 13.2 6 20 6 Z"
+        fill="#D97706" stroke="#101010" stroke-width="4" stroke-linejoin="miter"/>
+  <!-- W, slab stroke with a flat centre apex. -->
+  <path d="M16 21 L21 40 L25 30 L27 30 L31 40 L36 19"
+        fill="none" stroke="#101010" stroke-width="7"
+        stroke-linecap="butt" stroke-linejoin="miter" stroke-miterlimit="8"/>
+  <!-- AI sparkles: four-point stars, concave sides, needle points. -->
+  <path d="M48 18 C48 23 50 25 55 25 C50 25 48 27 48 32 C48 27 46 25 41 25 C46 25 48 23 48 18 Z"
+        fill="#101010"/>
+  <path d="M47 35.5 C47 38 48 39 50.5 39 C48 39 47 40 47 42.5 C47 40 46 39 43.5 39 C46 39 47 38 47 35.5 Z"
+        fill="#101010"/>
+</svg>

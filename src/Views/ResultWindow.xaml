@@ -10,18 +10,19 @@
         ShowInTaskbar="False"
         ResizeMode="NoResize"
         Topmost="True"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True"
+        TextOptions.TextFormattingMode="Ideal"
         WindowStartupLocation="Manual">
 
-    <Border Margin="14"
-            Background="{StaticResource Surface}"
-            BorderBrush="{StaticResource Border}"
-            BorderThickness="1"
-            CornerRadius="12">
-        <Border.Effect>
-            <DropShadowEffect BlurRadius="22" ShadowDepth="4" Direction="270" Opacity="0.22" Color="#000000" />
-        </Border.Effect>
+    <!-- Margin leaves room for the hard offset shadow, which is drawn outside the border. -->
+    <Border Margin="10,10,16,16"
+            Background="{StaticResource Paper}"
+            BorderBrush="{StaticResource Ink}"
+            BorderThickness="2"
+            Effect="{StaticResource HardShadow}">
 
-        <Grid Margin="16,13,16,13">
+        <Grid Margin="15,12,15,12">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -31,45 +32,66 @@
             <!-- Header -->
             <Grid Grid.Row="0" Margin="0,0,0,11">
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <Border Width="9" Height="9" CornerRadius="3"
-                            Background="{StaticResource AccentGradient}" VerticalAlignment="Center" />
-                    <TextBlock Text="WriteFix" FontSize="13" FontWeight="SemiBold" Margin="8,0,0,0" />
+                    <Border Width="10" Height="10"
+                            Background="{StaticResource Amber}"
+                            BorderBrush="{StaticResource Ink}" BorderThickness="2"
+                            VerticalAlignment="Center" />
+                    <TextBlock Text="WriteFix" FontSize="12" FontWeight="Bold" Margin="9,0,0,0"
+                               VerticalAlignment="Center" />
                 </StackPanel>
 
                 <Border x:Name="ModeChip"
                         HorizontalAlignment="Right" VerticalAlignment="Center"
-                        Background="{StaticResource SurfaceMuted}"
-                        CornerRadius="10" Padding="8,3">
-                    <TextBlock x:Name="ModeChipText" FontSize="11" Foreground="{StaticResource InkSoft}" />
+                        Background="{StaticResource AmberSoft}"
+                        BorderBrush="{StaticResource Ink}" BorderThickness="2"
+                        Padding="7,1">
+                    <TextBlock x:Name="ModeChipText" FontSize="10" FontWeight="Bold" />
                 </Border>
             </Grid>
 
             <!-- Body: exactly one of these three is visible at a time -->
             <Grid Grid.Row="1">
 
-                <StackPanel x:Name="WorkingPanel" Orientation="Horizontal" Margin="0,10,0,16">
-                    <Border x:Name="Pulse" Width="12" Height="12" CornerRadius="6"
-                            Background="{StaticResource AccentGradient}" VerticalAlignment="Center" />
-                    <TextBlock Text="Working…" FontSize="14" Margin="10,0,0,0"
+                <StackPanel x:Name="WorkingPanel" Orientation="Horizontal" Margin="0,8,0,14">
+                    <Border x:Name="Pulse" Width="12" Height="12"
+                            Background="{StaticResource Amber}"
+                            BorderBrush="{StaticResource Ink}" BorderThickness="2"
+                            VerticalAlignment="Center" />
+                    <TextBlock Text="Working…" FontSize="12.5" Margin="11,0,0,0"
                                Foreground="{StaticResource InkSoft}" VerticalAlignment="Center" />
                 </StackPanel>
 
                 <StackPanel x:Name="ErrorPanel" Visibility="Collapsed" Margin="0,2,0,12">
-                    <TextBlock x:Name="ErrorText" FontSize="13" TextWrapping="Wrap"
-                               Foreground="{StaticResource Danger}" />
+                    <Border Background="{StaticResource Well}"
+                            BorderBrush="{StaticResource Danger}" BorderThickness="0,0,0,0"
+                            Padding="0">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="5" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Rectangle Grid.Column="0" Fill="{StaticResource Danger}" />
+                            <TextBlock Grid.Column="1" x:Name="ErrorText" FontSize="11.5"
+                                       TextWrapping="Wrap" LineHeight="17"
+                                       Foreground="{StaticResource Ink}" Margin="10,8,10,8" />
+                        </Grid>
+                    </Border>
                 </StackPanel>
 
                 <StackPanel x:Name="ResultPanel" Visibility="Collapsed">
                     <ScrollViewer MaxHeight="260" VerticalScrollBarVisibility="Auto"
                                   HorizontalScrollBarVisibility="Disabled">
-                        <Border Background="{StaticResource SurfaceMuted}" CornerRadius="8" Padding="11,9">
-                            <TextBlock x:Name="ResultText" FontSize="14" TextWrapping="Wrap"
-                                       LineHeight="21" />
+                        <Border Background="{StaticResource Well}"
+                                BorderBrush="{StaticResource Ink}" BorderThickness="2"
+                                Padding="11,9">
+                            <!-- The one block set in prose, not monospace: this is the
+                                 sentence about to be sent, and it should read fast. -->
+                            <TextBlock x:Name="ResultText" Style="{StaticResource ProseText}" />
                         </Border>
                     </ScrollViewer>
 
                     <TextBlock x:Name="NoticeText" Style="{StaticResource HelpText}"
-                               Visibility="Collapsed" Margin="2,7,0,0" />
+                               Visibility="Collapsed" Margin="0,7,0,0" />
                 </StackPanel>
             </Grid>
 
@@ -80,7 +102,7 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-                <TextBlock Grid.Column="0" x:Name="HintText" VerticalAlignment="Center" FontSize="11"
+                <TextBlock Grid.Column="0" x:Name="HintText" VerticalAlignment="Center" FontSize="10.5"
                            Foreground="{StaticResource InkSoft}"
                            TextTrimming="CharacterEllipsis" Margin="0,0,10,0" />
 
@@ -88,11 +110,11 @@
                     <Button x:Name="CancelButton" Content="Cancel" Style="{StaticResource QuietButton}"
                             IsCancel="True" Click="OnCancel" />
                     <Button x:Name="RegenerateButton" Content="Regenerate" Style="{StaticResource QuietButton}"
-                            Margin="7,0,0,0" Click="OnRegenerate" />
+                            Margin="8,0,0,0" Click="OnRegenerate" />
                     <Button x:Name="CopyButton" Content="Copy" Style="{StaticResource QuietButton}"
-                            Margin="7,0,0,0" Click="OnCopy" />
+                            Margin="8,0,0,0" Click="OnCopy" />
                     <Button x:Name="AcceptButton" Content="Accept" Style="{StaticResource PrimaryButton}"
-                            Margin="7,0,0,0" IsDefault="True" Click="OnAccept" />
+                            Margin="8,0,0,0" IsDefault="True" Click="OnAccept" />
                 </StackPanel>
             </Grid>
         </Grid>

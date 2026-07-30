@@ -8,6 +8,7 @@ using WriteFix.Services.Platform;
 using WriteFix.Services.Settings;
 using Brush = System.Windows.Media.Brush;
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
+using TextBox = System.Windows.Controls.TextBox;
 
 namespace WriteFix.Views;
 
@@ -73,6 +74,41 @@ public partial class SettingsWindow : Window
         KeyStatusText.Text = _secrets.HasKey
             ? "A key is saved and encrypted for your Windows account. Leave the box empty to keep it."
             : "Create a key at openrouter.ai/keys, then paste it here.";
+    }
+
+    // ---- Scrolling ---------------------------------------------------------
+
+    /// <summary>
+    /// WPF lets a nested control swallow the mouse wheel, which breaks the page in two
+    /// ways: over the prompt box the page stops scrolling entirely, and over a closed
+    /// ComboBox the wheel silently changes the selected model. Both controls route here
+    /// instead, and the wheel is handed back to the page whenever the inner control has
+    /// no business acting on it.
+    /// </summary>
+    private void OnNestedScroll(object sender, MouseWheelEventArgs e)
+    {
+        if (e.Handled) return;
+
+        // A text box keeps the wheel only while it still has somewhere to go.
+        if (sender is TextBox box && HasRoomToScroll(box, e.Delta)) return;
+
+        e.Handled = true;
+
+        Scroller.RaiseEvent(new MouseWheelEventArgs(e.MouseDevice, e.Timestamp, e.Delta)
+        {
+            RoutedEvent = MouseWheelEvent,
+            Source = sender,
+        });
+    }
+
+    private static bool HasRoomToScroll(TextBox box, int delta)
+    {
+        // Offsets are doubles and land a hair off the extremes, so compare with slack.
+        const double Slack = 0.5;
+
+        return delta < 0
+            ? box.VerticalOffset < box.ExtentHeight - box.ViewportHeight - Slack
+            : box.VerticalOffset > Slack;
     }
 
     // ---- Hotkey capture ----------------------------------------------------

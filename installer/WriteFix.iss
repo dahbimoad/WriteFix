@@ -7,7 +7,7 @@
 ; end up running as administrator.
 
 #define AppName        "WriteFix"
-#define AppVersion     "1.0.0"
+#define AppVersion     "1.1.0"
 #define AppPublisher   "Moad Dahbi"
 #define AppExeName     "WriteFix.exe"
 #define SourceDir      "..\publish"

@@ -39,7 +39,7 @@ Language is detected automatically and never translated — French in, French ou
 
 ## Install
 
-Download or build `WriteFix-Setup-1.0.0.exe` and run it.
+Download or build `WriteFix-Setup-1.1.0.exe` and run it.
 
 The installer is **per-user** — no administrator prompt — and installs to
 `%LocalAppData%\Programs\WriteFix`. It is unsigned, so SmartScreen will warn once:
