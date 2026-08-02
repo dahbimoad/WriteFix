@@ -39,7 +39,7 @@ Language is detected automatically and never translated — French in, French ou
 
 ## Install
 
-Download or build `WriteFix-Setup-1.1.1.exe` and run it.
+Download or build `WriteFix-Setup-1.2.0.exe` and run it.
 
 The installer is **per-user** — no administrator prompt — and installs to
 `%LocalAppData%\Programs\WriteFix`. It is unsigned, so SmartScreen will warn once:
@@ -76,6 +76,30 @@ Double-click the tray icon, or right-click it → **Settings…**, or just run
   hotkey active.
 - **Start with Windows** — launches quietly in the tray when you sign in. Opening
   WriteFix yourself still brings Settings to the front.
+- **Check for updates** — see below.
+
+## Updates
+
+Updates happen when you ask for them, never on their own. Press **Check for updates**
+in Settings, or right-click the tray icon → **Check for updates…**. If a newer release
+exists, a window shows what changed, and nothing is downloaded or installed until you
+press **Update now**.
+
+From there WriteFix downloads that release's installer, runs it silently over the top
+(per-user install, so no administrator prompt), and starts the new build. If you were
+in Settings it comes back to Settings; if it was sitting in the tray it goes back to
+the tray. Your API key, settings and hotkey are untouched, and the update deliberately
+leaves **Start with Windows** and your desktop shortcut exactly as you had them.
+
+**Later** changes nothing. Ticking **Skip this version** stops the automatic check
+mentioning that one release again; pressing the button yourself always shows it.
+
+Tick **Look for updates automatically** if you want WriteFix to look once a day by
+itself. It is off by default, and turning it on only automates the *looking*: an
+update is still installed only after you press **Update now**.
+
+A copy that was not installed by the setup program cannot be replaced in place, so it
+gets the download page instead.
 
 ## Privacy
 
@@ -131,7 +155,8 @@ src/
     Logging/           privacy-safe local log
     Platform/          paths, Run key, STA threads
     Settings/          settings.json + DPAPI secret store
-  Views/               the card and the settings window
+    Updates/           GitHub release check, download, handover to setup
+  Views/               the card, the settings window, the update window
 ```
 
 See **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** for how capture and replacement
@@ -142,3 +167,11 @@ actually work, and why each significant choice was made.
 Automatic popups as you type, inline squiggles in other apps, languages beyond
 English and French, response streaming, multiple AI providers, accounts or sync,
 code signing.
+
+## License
+
+Copyright © 2026 Moad Dahbi. All rights reserved. See [LICENSE](LICENSE): the source
+is here to read, not to reuse. Running an official release for your own personal or
+internal business use is fine.
+
+Published by [iSoutien](https://isoutien.com).

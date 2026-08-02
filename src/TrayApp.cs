@@ -7,6 +7,7 @@ using WriteFix.Services.Capture;
 using WriteFix.Services.Correction;
 using WriteFix.Services.Logging;
 using WriteFix.Services.Settings;
+using WriteFix.Services.Updates;
 using WriteFix.Views;
 using Application = System.Windows.Application;
 
@@ -24,6 +25,7 @@ public sealed class TrayApp : IDisposable
     private readonly OpenRouterClient _client;
     private readonly AppMessageWindow _messages;
     private readonly CorrectionCoordinator _coordinator;
+    private readonly UpdateCoordinator _updates;
 
     private SettingsWindow? _settingsWindow;
 
@@ -35,6 +37,7 @@ public sealed class TrayApp : IDisposable
         _secrets = new SecretStore();
         _client = new OpenRouterClient(_settings, _secrets);
         _coordinator = new CorrectionCoordinator(new TextCaptureService(), _client, _settings, Notify);
+        _updates = new UpdateCoordinator(_settings, () => _settingsWindow);
 
         _messages = new AppMessageWindow();
         _messages.HotkeyPressed += _coordinator.Run;
@@ -43,6 +46,10 @@ public sealed class TrayApp : IDisposable
         _icon = BuildTrayIcon();
 
         ApplyHotkey(HotkeySpec.ParseOrDefault(_settings.Current.Hotkey));
+
+        // Opted-in users only, once a day. Everyone else hears nothing until they
+        // press Check for updates themselves.
+        _updates.CheckInBackground();
     }
 
     private NotifyIcon BuildTrayIcon()
@@ -51,6 +58,7 @@ public sealed class TrayApp : IDisposable
         menu.Items.Add("Correct now", null, (_, _) => _coordinator.Run());
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Settings…", null, (_, _) => OpenSettings());
+        menu.Items.Add("Check for updates…", null, (_, _) => CheckForUpdates());
         menu.Items.Add("Exit", null, (_, _) => Application.Current.Shutdown());
 
         var icon = new NotifyIcon
@@ -80,6 +88,26 @@ public sealed class TrayApp : IDisposable
         return SystemIcons.Application;
     }
 
+    /// <summary>
+    /// The tray route to an update check. The window speaks for itself when there
+    /// is one; a balloon is the only way to say "nothing new" from here.
+    /// </summary>
+    private async void CheckForUpdates()
+    {
+        Notify("Checking for updates…");
+
+        try
+        {
+            var result = await _updates.CheckAsync(manual: true);
+            if (result.Release is null) Notify(result.Message);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("Update check failed.", ex);
+            Notify("The update check failed. WriteFix is still running.");
+        }
+    }
+
     public void OpenSettings()
     {
         if (_settingsWindow is not null)
@@ -91,7 +119,7 @@ public sealed class TrayApp : IDisposable
         // The card and Settings competing for focus helps nobody.
         _coordinator.Dismiss();
 
-        _settingsWindow = new SettingsWindow(_settings, _secrets, _client, ApplyHotkey);
+        _settingsWindow = new SettingsWindow(_settings, _secrets, _client, _updates, ApplyHotkey);
         _settingsWindow.Closed += (_, _) => _settingsWindow = null;
         _settingsWindow.Show();
         BringToFront(_settingsWindow);
@@ -135,6 +163,7 @@ public sealed class TrayApp : IDisposable
     {
         _messages.Dispose();
         _client.Dispose();
+        _updates.Dispose();
 
         _icon.Visible = false;
         _icon.Dispose();

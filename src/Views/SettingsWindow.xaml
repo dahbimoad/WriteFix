@@ -267,6 +267,33 @@
                         </StackPanel>
                     </Border>
                 </Grid>
+
+                <Border Style="{StaticResource Card}" Margin="0,16,0,0">
+                    <StackPanel Margin="20,18,20,20">
+                        <Grid>
+                            <StackPanel>
+                                <TextBlock Text="Version" Style="{StaticResource SectionTitle}" />
+                                <TextBlock x:Name="VersionText" Style="{StaticResource SectionSubtitle}"
+                                           Margin="0,3,0,0" />
+                            </StackPanel>
+                            <Button x:Name="UpdateCheckButton" Content="Check for updates"
+                                    HorizontalAlignment="Right" VerticalAlignment="Center"
+                                    Style="{StaticResource QuietButton}" Click="OnCheckForUpdates" />
+                        </Grid>
+
+                        <Border Background="{StaticResource Well}" CornerRadius="11"
+                                Padding="13,11" Margin="0,16,0,0">
+                            <StackPanel>
+                                <CheckBox x:Name="AutoUpdateBox" Style="{StaticResource FieldCheck}"
+                                          AutomationProperties.Name="Look for updates automatically"
+                                          Content="Look for updates automatically" />
+                                <TextBlock Text="Off by default. When on, WriteFix looks once a day and still asks before installing anything."
+                                           Style="{StaticResource HelpText}" Margin="31,6,0,0"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Border>
             </StackPanel>
         </ScrollViewer>
 

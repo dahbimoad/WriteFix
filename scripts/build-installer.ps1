@@ -14,6 +14,22 @@ $ErrorActionPreference = "Stop"
 
 $repo = Split-Path $PSScriptRoot -Parent
 
+# The updater compares the running build's assembly version against the newest
+# GitHub release tag, and the release is named after the installer's AppVersion.
+# If those two drift, a shipped build either nags forever or never sees the
+# update at all, and nothing errors to tell you. Fail here instead.
+$csprojVersion = ([xml](Get-Content "$repo\src\WriteFix.csproj")).Project.PropertyGroup.Version |
+    Where-Object { $_ } | Select-Object -First 1
+$issMatch = Select-String -Path "$repo\installer\WriteFix.iss" -Pattern '^#define\s+AppVersion\s+"([^"]+)"'
+if (-not $csprojVersion) { throw "<Version> not found in src\WriteFix.csproj" }
+if (-not $issMatch) { throw "AppVersion not found in installer\WriteFix.iss" }
+
+$issVersion = $issMatch.Matches[0].Groups[1].Value
+if ($csprojVersion -ne $issVersion) {
+    throw "Version mismatch: csproj says $csprojVersion, installer says $issVersion. Make them match."
+}
+Write-Host "Version $issVersion (csproj and installer agree)." -ForegroundColor DarkGray
+
 # Inno Setup 6 may be installed per-user rather than into Program Files.
 $candidates = @(
     "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe",

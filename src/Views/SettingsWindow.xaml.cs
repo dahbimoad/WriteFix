@@ -6,6 +6,7 @@ using WriteFix.Models;
 using WriteFix.Services.Ai;
 using WriteFix.Services.Platform;
 using WriteFix.Services.Settings;
+using WriteFix.Services.Updates;
 using Brush = System.Windows.Media.Brush;
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
 using TextBox = System.Windows.Controls.TextBox;
@@ -34,6 +35,7 @@ public partial class SettingsWindow : Window
     private readonly SettingsStore _settings;
     private readonly SecretStore _secrets;
     private readonly OpenRouterClient _client;
+    private readonly UpdateCoordinator _updates;
 
     /// <summary>Re-registers the global hotkey; false means another app already owns it.</summary>
     private readonly Func<HotkeySpec, bool> _applyHotkey;
@@ -45,6 +47,7 @@ public partial class SettingsWindow : Window
         SettingsStore settings,
         SecretStore secrets,
         OpenRouterClient client,
+        UpdateCoordinator updates,
         Func<HotkeySpec, bool> applyHotkey)
     {
         InitializeComponent();
@@ -52,6 +55,7 @@ public partial class SettingsWindow : Window
         _settings = settings;
         _secrets = secrets;
         _client = client;
+        _updates = updates;
         _applyHotkey = applyHotkey;
 
         var current = settings.Current;
@@ -63,6 +67,8 @@ public partial class SettingsWindow : Window
         PromptBox.Text = current.StyleInstructions;
         HotkeyBox.Text = _hotkey.ToString();
         StartupBox.IsChecked = StartupRegistry.IsEnabled();
+        AutoUpdateBox.IsChecked = current.AutoCheckUpdates;
+        VersionText.Text = $"WriteFix {UpdateService.CurrentVersion}";
 
         ApiKeyBox.PasswordChanged += (_, _) => _keyEdited = true;
 
@@ -170,6 +176,26 @@ public partial class SettingsWindow : Window
         }
     }
 
+    /// <summary>
+    /// A check the user asked for, so it reports either way. It also ignores a
+    /// previously skipped version: pressing this button is asking about it again.
+    /// </summary>
+    private async void OnCheckForUpdates(object sender, RoutedEventArgs e)
+    {
+        UpdateCheckButton.IsEnabled = false;
+        SetFooter("Checking for updates…");
+
+        try
+        {
+            var result = await _updates.CheckAsync(manual: true);
+            SetFooter(result.Message, isError: !result.Ok);
+        }
+        finally
+        {
+            UpdateCheckButton.IsEnabled = true;
+        }
+    }
+
     private void OnClearKey(object sender, RoutedEventArgs e)
     {
         _secrets.Delete();
@@ -212,6 +238,7 @@ public partial class SettingsWindow : Window
         updated.StyleInstructions = PromptBox.Text;
         updated.Hotkey = _hotkey.ToString();
         updated.StartWithWindows = StartupBox.IsChecked == true;
+        updated.AutoCheckUpdates = AutoUpdateBox.IsChecked == true;
         updated.HasApiKey = _secrets.HasKey;
 
         StartupRegistry.Set(updated.StartWithWindows);

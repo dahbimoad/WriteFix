@@ -14,9 +14,14 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
-    <Version>1.1.1</Version>
+    <Version>1.2.0</Version>
     <Product>WriteFix</Product>
     <Description>Instant message corrector for English and French.</Description>
+    <!-- Properties > Details on WriteFix.exe. The company publishes it, the
+         author owns it; the installer repeats both (installer\WriteFix.iss). -->
+    <Company>iSoutien</Company>
+    <Authors>Moad Dahbi</Authors>
+    <Copyright>Copyright (c) 2026 Moad Dahbi</Copyright>
   </PropertyGroup>
 
   <ItemGroup>

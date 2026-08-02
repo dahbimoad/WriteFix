@@ -7,10 +7,14 @@
 ; end up running as administrator.
 
 #define AppName        "WriteFix"
-#define AppVersion     "1.1.1"
-#define AppPublisher   "Moad Dahbi"
+#define AppVersion     "1.2.0"
+; The company publishes it, the author owns it. Windows shows the publisher in
+; Settings > Apps and on the SmartScreen prompt.
+#define AppPublisher   "iSoutien"
+#define AppCopyright   "Copyright (c) 2026 Moad Dahbi"
 #define AppExeName     "WriteFix.exe"
-#define AppIconName    "WriteFix-1.1.1.ico"
+; Derived from AppVersion so bumping the version cannot leave a stale icon name.
+#define AppIconName    "WriteFix-" + AppVersion + ".ico"
 #define SourceDir      "..\publish"
 
 [Setup]
@@ -19,7 +23,12 @@ AppName={#AppName}
 AppVersion={#AppVersion}
 AppVerName={#AppName} {#AppVersion}
 AppPublisher={#AppPublisher}
+AppCopyright={#AppCopyright}
 VersionInfoVersion={#AppVersion}
+VersionInfoCompany={#AppPublisher}
+VersionInfoCopyright={#AppCopyright}
+VersionInfoProductName={#AppName}
+VersionInfoDescription={#AppName} Setup
 
 DefaultDirName={autopf}\{#AppName}
 DefaultGroupName={#AppName}
@@ -76,6 +85,12 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; \
 
 [Run]
 Filename: "{app}\{#AppExeName}"; Description: "Start {#AppName} now"; Flags: nowait postinstall skipifsilent
+; In-app updates run this setup silently with /RELAUNCH=1, and /BACKGROUND=1 when
+; WriteFix was sitting in the tray rather than showing Settings. A silent run skips
+; the entry above, which is why this second one exists.
+; runasoriginaluser matters here: if setup was elevated, an elevated WriteFix could
+; not send keystrokes to normal windows, which is the whole app (see the note above).
+Filename: "{app}\{#AppExeName}"; Parameters: "{code:RelaunchParameters}"; Flags: nowait runasoriginaluser; Check: ShouldRelaunch
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}"
@@ -83,6 +98,20 @@ Type: filesandordirs; Name: "{app}"
 [Code]
 const
   RunKey = 'Software\Microsoft\Windows\CurrentVersion\Run';
+
+// Set by the in-app updater so the new build starts itself once setup is done.
+function ShouldRelaunch(): Boolean;
+begin
+  Result := ExpandConstant('{param:RELAUNCH|0}') = '1';
+end;
+
+function RelaunchParameters(Value: string): string;
+begin
+  if ExpandConstant('{param:BACKGROUND|0}') = '1' then
+    Result := '--background'
+  else
+    Result := '';
+end;
 
 // WriteFix is a tray app with no main window. Restart Manager does not reliably
 // close it, and a running copy locks its own files, so kill it outright.

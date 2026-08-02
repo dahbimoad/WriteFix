@@ -68,6 +68,22 @@ public sealed class AppSettings
 
     public bool StartWithWindows { get; set; }
 
+    /// <summary>
+    /// Opt in to a once-a-day look for a new release. Off by default: WriteFix
+    /// does not contact GitHub unless the user asked it to, and even then the
+    /// update is only installed after they accept it.
+    /// </summary>
+    public bool AutoCheckUpdates { get; set; }
+
+    /// <summary>When the last check ran, so the daily one does not repeat every launch.</summary>
+    public DateTimeOffset? LastUpdateCheck { get; set; }
+
+    /// <summary>
+    /// A version the user chose to skip. Only silences the automatic check, and
+    /// only for that one version: pressing Check for updates always shows it.
+    /// </summary>
+    public string SkippedVersion { get; set; } = "";
+
     /// <summary>Mirrors whether the DPAPI key file exists, so the UI can hint without decrypting.</summary>
     public bool HasApiKey { get; set; }
 
@@ -104,6 +120,7 @@ public sealed class AppSettings
         // StyleInstructions is deliberately not defaulted here: an empty box is a
         // legitimate choice, and the header/footer keep the prompt valid regardless.
         StyleInstructions ??= "";
+        SkippedVersion ??= "";
 
         RequestTimeoutSeconds = Math.Clamp(RequestTimeoutSeconds, 10, 300);
         MaxInputCharacters = Math.Clamp(MaxInputCharacters, 200, 100_000);
