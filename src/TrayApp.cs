@@ -45,24 +45,6 @@ public sealed class TrayApp : IDisposable
         ApplyHotkey(HotkeySpec.ParseOrDefault(_settings.Current.Hotkey));
     }
 
-    /// <summary>
-    /// Opens Settings on a fresh install so the user can paste a key (Flow H).
-    /// Otherwise says hello once, because a new tray icon on Windows 11 starts
-    /// hidden in the overflow flyout and is easy to miss entirely.
-    /// </summary>
-    public void ShowFirstRunIfNeeded()
-    {
-        if (!_secrets.HasKey)
-        {
-            AppLog.Info("No API key found; opening Settings for first-run setup.");
-            OpenSettings();
-            return;
-        }
-
-        var hotkey = HotkeySpec.ParseOrDefault(_settings.Current.Hotkey);
-        Notify($"Running in the tray. Press {hotkey} in any text box. Double-click the tray icon for Settings.");
-    }
-
     private NotifyIcon BuildTrayIcon()
     {
         var menu = new ContextMenuStrip();
@@ -98,7 +80,7 @@ public sealed class TrayApp : IDisposable
         return SystemIcons.Application;
     }
 
-    private void OpenSettings()
+    public void OpenSettings()
     {
         if (_settingsWindow is not null)
         {

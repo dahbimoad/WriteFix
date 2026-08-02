@@ -10,6 +10,7 @@ namespace WriteFix;
 public partial class App : Application
 {
     private const string InstanceMutexName = @"Local\WriteFix.SingleInstance";
+    private const string BackgroundArgument = "--background";
 
     private Mutex? _instanceMutex;
     private TrayApp? _tray;
@@ -18,13 +19,17 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        var startInBackground = e.Args.Contains(BackgroundArgument, StringComparer.OrdinalIgnoreCase);
+
         _instanceMutex = new Mutex(initiallyOwned: true, InstanceMutexName, out var isFirstInstance);
         if (!isFirstInstance)
         {
             // Running WriteFix again is how people ask for its window back — the tray
             // icon is usually hidden in the Windows 11 overflow flyout. So hand the
             // request to the live instance and leave quietly, rather than scolding.
-            AppMessageWindow.BroadcastShowSettings();
+            if (!startInBackground)
+                AppMessageWindow.BroadcastShowSettings();
+
             Shutdown();
             return;
         }
@@ -36,7 +41,11 @@ public partial class App : Application
         AppDomain.CurrentDomain.UnhandledException += OnDomainException;
 
         _tray = new TrayApp();
-        _tray.ShowFirstRunIfNeeded();
+
+        if (startInBackground)
+            AppLog.Info("WriteFix started quietly in the background.");
+        else
+            _tray.OpenSettings();
     }
 
     private static void OnDispatcherException(object sender, DispatcherUnhandledExceptionEventArgs e)

@@ -72,7 +72,7 @@ public partial class ResultWindow : Window
         RegenerateButton.IsEnabled = true;
         CopyButton.IsEnabled = true;
 
-        HintText.Text = canReplace ? "↵ accept · Esc cancel" : "Esc cancel";
+        HintText.Text = canReplace ? "Enter  ·  Esc" : "Esc cancel";
 
         // Keeps Enter working after the pointer has been over another button.
         if (canReplace) AcceptButton.Focus();
@@ -124,10 +124,30 @@ public partial class ResultWindow : Window
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         PositionCard();
-
-        // Fading in after placement avoids the card visibly jumping into position.
-        BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(110)));
+        PlayEntranceAnimation();
         Activate();
+    }
+
+    private void PlayEntranceAnimation()
+    {
+        if (!SystemParameters.ClientAreaAnimation)
+        {
+            Opacity = 1;
+            CardEntranceTransform.Y = 0;
+            return;
+        }
+
+        var easing = new CubicEase { EasingMode = EasingMode.EaseOut };
+        BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(170))
+        {
+            EasingFunction = easing,
+        });
+        CardEntranceTransform.BeginAnimation(
+            TranslateTransform.YProperty,
+            new DoubleAnimation(7, 0, TimeSpan.FromMilliseconds(190))
+            {
+                EasingFunction = easing,
+            });
     }
 
     private void PositionCard()
@@ -170,16 +190,27 @@ public partial class ResultWindow : Window
 
     private void StartPulse()
     {
+        if (!SystemParameters.ClientAreaAnimation)
+        {
+            Pulse.Opacity = 1;
+            return;
+        }
+
         var animation = new DoubleAnimation(1.0, 0.25, TimeSpan.FromMilliseconds(620))
         {
             AutoReverse = true,
             RepeatBehavior = RepeatBehavior.Forever,
+            EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut },
         };
 
         Pulse.BeginAnimation(OpacityProperty, animation);
     }
 
-    private void StopPulse() => Pulse.BeginAnimation(OpacityProperty, null);
+    private void StopPulse()
+    {
+        Pulse.BeginAnimation(OpacityProperty, null);
+        Pulse.Opacity = 1;
+    }
 
     // ---- Commands ----------------------------------------------------------
 

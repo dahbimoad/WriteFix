@@ -166,13 +166,15 @@ encrypted with DPAPI (`CurrentUser`) and tied to WriteFix by an entropy value, s
 blob copied from elsewhere will not decrypt. `settings.json` records only whether a
 key exists.
 
-A named per-user mutex enforces a single instance. Launching a second copy broadcasts
-a registered window message asking the running one to show Settings, then exits
-silently — because re-running a tray app is how people ask for its window back, and
-the tray icon is easy to lose in the Windows 11 overflow flyout.
+A named per-user mutex enforces a single instance. Launching a second ordinary copy
+broadcasts a registered window message asking the running one to show Settings, then
+exits silently — because re-running a tray app is how people ask for its window back,
+and the tray icon is easy to lose in the Windows 11 overflow flyout. A
+`--background` launch never requests a window.
 
 **Start with Windows** uses the current user's `Run` key. The installer's checkbox
-writes the identical value, so the two never disagree.
+writes the identical executable command with `--background`, so Windows sign-in
+starts WriteFix directly in the tray.
 
 ---
 

@@ -225,7 +225,7 @@ public partial class SettingsWindow : Window
             isError: !registered);
     }
 
-    private void OnClose(object sender, RoutedEventArgs e) => Close();
+    private void OnRunInBackground(object sender, RoutedEventArgs e) => Close();
 
     private void SetFooter(string message, bool isError = false)
     {

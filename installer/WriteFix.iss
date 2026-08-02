@@ -7,9 +7,10 @@
 ; end up running as administrator.
 
 #define AppName        "WriteFix"
-#define AppVersion     "1.1.0"
+#define AppVersion     "1.1.1"
 #define AppPublisher   "Moad Dahbi"
 #define AppExeName     "WriteFix.exe"
+#define AppIconName    "WriteFix-1.1.1.ico"
 #define SourceDir      "..\publish"
 
 [Setup]
@@ -32,7 +33,7 @@ PrivilegesRequiredOverridesAllowed=dialog
 OutputDir=..\dist
 OutputBaseFilename={#AppName}-Setup-{#AppVersion}
 SetupIconFile=..\src\Assets\writefix.ico
-UninstallDisplayIcon={app}\{#AppExeName}
+UninstallDisplayIcon={app}\{#AppIconName}
 WizardStyle=modern
 
 ; The payload is a self-contained .NET runtime, so it compresses well but slowly.
@@ -59,16 +60,18 @@ Name: "startup";     Description: "Start {#AppName} automatically when Windows s
 [Files]
 ; The whole self-contained publish folder.
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; A versioned path prevents Explorer from reusing a cached icon from an older release.
+Source: "..\src\Assets\writefix.ico"; DestDir: "{app}"; DestName: "{#AppIconName}"; Flags: ignoreversion
 
 [Icons]
-Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExeName}"
-Name: "{autodesktop}\{#AppName}";  Filename: "{app}\{#AppExeName}"; Tasks: desktopicon
+Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExeName}"; IconFilename: "{app}\{#AppIconName}"
+Name: "{autodesktop}\{#AppName}";  Filename: "{app}\{#AppExeName}"; IconFilename: "{app}\{#AppIconName}"; Tasks: desktopicon
 
 [Registry]
 ; Same key/value/format the app's own "Start with Windows" checkbox writes, so the
 ; two stay in sync instead of fighting each other.
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; \
-    ValueType: string; ValueName: "WriteFix"; ValueData: """{app}\{#AppExeName}"""; \
+    ValueType: string; ValueName: "WriteFix"; ValueData: """{app}\{#AppExeName}"" --background"; \
     Flags: uninsdeletevalue; Tasks: startup
 
 [Run]

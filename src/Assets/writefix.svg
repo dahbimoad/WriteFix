@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="WriteFix">
   <!-- Message bubble: three rounded corners, square bottom-left doing the tail's job. -->
   <path d="M20 6 H44 C52.8 6 60 13.2 60 22 V40 C60 48.8 52.8 56 44 56 H6 V22 C6 13.2 13.2 6 20 6 Z"
-        fill="#D97706" stroke="#101010" stroke-width="4" stroke-linejoin="miter"/>
+        fill="#C9343F" stroke="#101010" stroke-width="4" stroke-linejoin="miter"/>
   <!-- W, slab stroke with a flat centre apex. -->
   <path d="M16 21 L21 40 L25 30 L27 30 L31 40 L36 19"
         fill="none" stroke="#101010" stroke-width="7"

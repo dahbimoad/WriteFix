@@ -39,13 +39,13 @@ Language is detected automatically and never translated — French in, French ou
 
 ## Install
 
-Download or build `WriteFix-Setup-1.1.0.exe` and run it.
+Download or build `WriteFix-Setup-1.1.1.exe` and run it.
 
 The installer is **per-user** — no administrator prompt — and installs to
 `%LocalAppData%\Programs\WriteFix`. It is unsigned, so SmartScreen will warn once:
 **More info → Run anyway**.
 
-On first launch it opens Settings so you can paste an
+On a normal launch it opens Settings so you can paste an
 [OpenRouter API key](https://openrouter.ai/keys). Click **Test** to confirm it works,
 then **Save**.
 
@@ -72,7 +72,10 @@ Double-click the tray icon, or right-click it → **Settings…**, or just run
   - your **correction style**, fully editable — tone, formality, what to leave alone.
     An expander previews the exact composed prompt.
 - **Hotkey** — click the box and press the combination you want.
-- **Start with Windows**.
+- **Run in background** — closes Settings while keeping the tray icon and global
+  hotkey active.
+- **Start with Windows** — launches quietly in the tray when you sign in. Opening
+  WriteFix yourself still brings Settings to the front.
 
 ## Privacy
 

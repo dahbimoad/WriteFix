@@ -42,7 +42,7 @@ public static class StartupRegistry
                     return;
                 }
 
-                key.SetValue(ValueName, $"\"{exe}\"");
+                key.SetValue(ValueName, $"\"{exe}\" --background");
             }
             else
             {
