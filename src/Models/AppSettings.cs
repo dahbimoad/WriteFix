@@ -8,7 +8,24 @@ namespace WriteFix.Models;
 /// </summary>
 public sealed class AppSettings
 {
-    public const string DefaultModel = "google/gemma-4-26b-a4b-it:free";
+    /// <summary>
+    /// Groq's OpenAI-compatible endpoint. WriteFix speaks plain
+    /// <c>/chat/completions</c>, so any provider that implements it works here.
+    /// </summary>
+    public const string GroqBaseUrl = "https://api.groq.com/openai/v1";
+
+    /// <summary>Where WriteFix pointed before it could talk to more than one provider.</summary>
+    public const string OpenRouterBaseUrl = "https://openrouter.ai/api/v1";
+
+    public const string DefaultBaseUrl = GroqBaseUrl;
+
+    /// <summary>
+    /// Measured 2026-08-31 against the production prompt: fastest of Groq's free
+    /// models (~570ms EN, ~820ms FR), correct French elision and accents, and it
+    /// keeps its reasoning in a separate field instead of leaking it into the answer.
+    /// </summary>
+    public const string DefaultModel = "openai/gpt-oss-120b";
+
     public const string DefaultHotkey = "Ctrl+Alt+F";
 
     /// <summary>
@@ -53,7 +70,20 @@ public sealed class AppSettings
         - Keep technical terms, product names, URLs and code exactly as written.
         """;
 
-    /// <summary>OpenRouter model slug, e.g. <c>anthropic/claude-haiku-4.5</c>.</summary>
+    /// <summary>
+    /// Base URL of an OpenAI-compatible API, without a trailing slash and without
+    /// <c>/chat/completions</c>.
+    ///
+    /// Deliberately starts empty rather than at <see cref="DefaultBaseUrl"/>: a
+    /// settings.json written before this field existed simply has no value for it,
+    /// and System.Text.Json would otherwise leave the property at the Groq default
+    /// and silently send an existing user's OpenRouter key to Groq. Empty means
+    /// "not decided yet", which lets <see cref="Normalize"/> and
+    /// <see cref="AdoptLegacyProvider"/> tell a fresh install from an upgrade.
+    /// </summary>
+    public string ApiBaseUrl { get; set; } = "";
+
+    /// <summary>Model id as the configured provider spells it, e.g. <c>openai/gpt-oss-120b</c>.</summary>
     public string Model { get; set; } = DefaultModel;
 
     /// <summary>
@@ -109,6 +139,17 @@ public sealed class AppSettings
         return builder.ToString();
     }
 
+    /// <summary>
+    /// Called only for a settings.json that already existed on disk. Such a file
+    /// predates multi-provider support, so its stored API key is an OpenRouter key
+    /// and it must keep talking to OpenRouter — upgrading WriteFix is not consent to
+    /// switch providers. Only a first-run install falls through to the Groq default.
+    /// </summary>
+    public void AdoptLegacyProvider()
+    {
+        if (string.IsNullOrWhiteSpace(ApiBaseUrl)) ApiBaseUrl = OpenRouterBaseUrl;
+    }
+
     public AppSettings Clone() => (AppSettings)MemberwiseClone();
 
     /// <summary>Repairs values that would otherwise break the app if hand-edited in settings.json.</summary>
@@ -116,6 +157,10 @@ public sealed class AppSettings
     {
         if (string.IsNullOrWhiteSpace(Model)) Model = DefaultModel;
         if (string.IsNullOrWhiteSpace(Hotkey)) Hotkey = DefaultHotkey;
+
+        // Reached by a fresh install, or by a user who cleared the box.
+        if (string.IsNullOrWhiteSpace(ApiBaseUrl)) ApiBaseUrl = DefaultBaseUrl;
+        ApiBaseUrl = ApiBaseUrl.Trim().TrimEnd('/');
 
         // StyleInstructions is deliberately not defaulted here: an empty box is a
         // legitimate choice, and the header/footer keep the prompt valid regardless.

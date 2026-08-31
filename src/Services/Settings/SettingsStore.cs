@@ -28,6 +28,11 @@ public sealed class SettingsStore
             {
                 var json = File.ReadAllText(AppPaths.SettingsFile);
                 Current = JsonSerializer.Deserialize<AppSettings>(json, Json) ?? new AppSettings();
+
+                // The file predates multi-provider support if it carries no base URL,
+                // so keep that install on OpenRouter rather than pointing an existing
+                // OpenRouter key at the new Groq default.
+                Current.AdoptLegacyProvider();
             }
         }
         catch (Exception ex)
@@ -47,8 +52,9 @@ public sealed class SettingsStore
         File.WriteAllText(AppPaths.SettingsFile, JsonSerializer.Serialize(settings, Json));
         Current = settings;
 
-        AppLog.Info($"Settings saved. model={settings.Model} hotkey={settings.Hotkey} " +
-                    $"startWithWindows={settings.StartWithWindows} hasKey={settings.HasApiKey}");
+        AppLog.Info($"Settings saved. baseUrl={settings.ApiBaseUrl} model={settings.Model} " +
+                    $"hotkey={settings.Hotkey} startWithWindows={settings.StartWithWindows} " +
+                    $"hasKey={settings.HasApiKey}");
         Changed?.Invoke(settings);
     }
 }

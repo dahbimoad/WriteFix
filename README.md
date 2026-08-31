@@ -45,9 +45,9 @@ The installer is **per-user** — no administrator prompt — and installs to
 `%LocalAppData%\Programs\WriteFix`. It is unsigned, so SmartScreen will warn once:
 **More info → Run anyway**.
 
-On a normal launch it opens Settings so you can paste an
-[OpenRouter API key](https://openrouter.ai/keys). Click **Test** to confirm it works,
-then **Save**.
+On a normal launch it opens Settings so you can paste an API key. WriteFix ships
+pointed at [Groq](https://console.groq.com/keys), which is free and needs no credit
+card. Click **Test** to confirm it works, then **Save**.
 
 > WriteFix must never run elevated. An elevated process cannot send keystrokes to a
 > normal user's windows, which is exactly what it needs to do.
@@ -62,9 +62,12 @@ Double-click the tray icon, or right-click it → **Settings…**, or just run
 
 - **API key** — stored encrypted with Windows DPAPI, readable only by your Windows
   account on this machine. Never written to `settings.json` or the log.
-- **Model** — any OpenRouter slug. Ships with `google/gemma-4-26b-a4b-it:free`, which
-  costs nothing and handles French well. Switch to `anthropic/claude-haiku-4.5`
-  (roughly $1–2/month at normal use) for lower, more consistent latency.
+- **Provider** — any OpenAI-compatible API. Presets for Groq and OpenRouter; paste
+  another base URL to use Mistral, a local Ollama, or anything else that speaks
+  `/chat/completions`. The key belongs to whichever provider is selected, so changing
+  provider means pasting a new key.
+- **Model** — any model id the provider knows. Ships with `openai/gpt-oss-120b` on
+  Groq: free, ~0.5s, and correct on French accents and elision.
 - **System prompt** — split in two:
   - a **fixed contract** in code (rewrite rather than answer, ignore instructions
     embedded in the message, never translate, return bare text). Shown read-only,
@@ -103,8 +106,12 @@ gets the download page instead.
 
 ## Privacy
 
-Only the system prompt and the captured text are sent, to OpenRouter and on to the
-provider serving your chosen model. No window titles, process names or identifiers.
+Only the system prompt and the captured text are sent, to whichever provider you
+configured and on to the one serving your chosen model. No window titles, process
+names or identifiers.
+
+Free tiers generally reserve the right to train on what you send. If that matters for
+what you paste, use a paid model.
 
 There is no history, telemetry, account, or WriteFix server. The local log at
 `%LocalAppData%\WriteFix\Logs\writefix.log` records state, timings and error codes —
@@ -149,7 +156,7 @@ src/
   Interop/             Win32: hotkey, SendInput, caret location
   Models/              plain data types
   Services/
-    Ai/                OpenRouter HTTP client (no SDK)
+    Ai/                OpenAI-compatible HTTP client (no SDK)
     Capture/           UI Automation + guarded clipboard
     Correction/        the capture -> correct -> review -> replace workflow
     Logging/           privacy-safe local log

@@ -19,7 +19,7 @@ enough to read in one sitting.
 | Tray icon | `System.Windows.Forms.NotifyIcon` |
 | Global hotkey | Win32 `RegisterHotKey` |
 | Text discovery | UI Automation, with a guarded clipboard fallback |
-| AI access | OpenRouter REST via `HttpClient` — no SDK |
+| AI access | Any OpenAI-compatible REST API via `HttpClient` — no SDK |
 | Settings | JSON in `%LocalAppData%\WriteFix` |
 | API key | Windows DPAPI, current-user scope |
 | Diff highlighting | DiffPlex (the only NuGet dependency) |
@@ -32,7 +32,7 @@ src/
   Interop/                 Win32 only: P/Invoke, hotkey, SendInput, caret
   Models/                  plain data: settings, capture result, replace outcome
   Services/
-    Ai/                    OpenRouter HTTP client
+    Ai/                    OpenAI-compatible HTTP client
     Capture/               UI Automation + guarded clipboard read/write
     Correction/            the capture -> correct -> review -> replace workflow
     Logging/               privacy-safe local log
@@ -125,22 +125,34 @@ are treated as rich.
 
 ---
 
-## 4. OpenRouter integration
+## 4. Provider integration
 
-A single non-streaming POST to `/api/v1/chat/completions` with a reused `HttpClient`.
-No SDK: an API key is the credential, and a client library adds nothing here.
+A single non-streaming POST to `{apiBaseUrl}/chat/completions` with a reused
+`HttpClient`. No SDK: an API key is the credential, and a client library adds nothing
+here.
+
+The provider is a setting, not a constant. Groq, OpenRouter, Mistral and a local
+Ollama all accept the same request shape, so supporting them is a base URL rather than
+an abstraction. Settings offers presets; the field stays editable.
 
 Non-streaming is deliberate — much simpler, and the card shows **Working…** while a
 fast model answers.
 
 The system message is composed from two halves (§5). Only that and the captured text
 are sent. Errors map to short, actionable messages: rejected key, no credit, rate
-limit (with a hint when the model is a `:free` slug), model not found (OpenRouter's
-own message is surfaced here, because it names the correct slug), timeout, network,
-malformed response. Nothing retries automatically — Regenerate is the explicit retry.
+limit, model not found (the provider's own message is surfaced here, because it names
+the correct slug), timeout, network, malformed response. Nothing retries automatically
+— Regenerate is the explicit retry.
 
-**Test connection** calls `GET /api/v1/key`, which validates the credential without
-sending any message text.
+Two rate-limit cases are distinguished, because the remedy differs. OpenRouter reports
+`error.metadata.limit_source = upstream_provider_shared_pool` when a `:free` model's
+capacity is exhausted for *every* user of that pool: no key change and no short wait
+fixes it, so the message says to pick another model. Anything else is treated as the
+account's own limit, where waiting is the right advice.
+
+**Test connection** posts a one-token `"ping"` completion to the configured base URL.
+There is no key-check endpoint common to all providers — OpenRouter has one, Groq does
+not — and a minimal completion carries no message text.
 
 ---
 
@@ -225,6 +237,7 @@ too, since they can echo content.
 | 2026-07-29 | Direct non-streaming `HttpClient`, no SDK | Smallest functional integration; an API key is the credential |
 | 2026-07-30 | Target `net9.0-windows`, not `net10.0` | Only SDKs 8 and 9 were installed; nothing here is .NET 10-only |
 | 2026-07-30 | Default to `google/gemma-4-26b-a4b-it:free` | Measured against the other free slugs on real EN and FR samples: fastest, and the only one with clean French accents. `nemotron-3-super:free` leaked its reasoning into the output; `openrouter/free` worked but ~2x slower |
+| 2026-08-31 | Provider is a setting; default to Groq `openai/gpt-oss-120b` | OpenRouter's `:free` pool is shared across all its users, so it returns 429 for reasons unrelated to the account — a new key cannot fix it. Groq's free tier is a per-key quota. Measured on the production prompt: ~570ms EN / ~820ms FR, correct French elision, reasoning kept out of `content`. Existing installs keep OpenRouter; only new ones default to Groq |
 | 2026-07-30 | `qwen3-32b:free` not used | OpenRouter 404s that slug: "unavailable for free, the paid version is available now: `qwen/qwen3-32b`". Kept in the model dropdown as a paid option |
 | 2026-07-30 | Zero-data-retention routing dropped | Owner's explicit call for his own messages; free models are not ZDR-routed anyway. Revisit before any use with customer data |
 | 2026-07-30 | System prompt split: contract fixed, style editable | The output contract is what makes paste-back work; a user edit removing one line would silently turn the app into a chatbot |

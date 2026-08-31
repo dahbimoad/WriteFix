@@ -22,7 +22,7 @@ public sealed class TrayApp : IDisposable
     private readonly NotifyIcon _icon;
     private readonly SettingsStore _settings;
     private readonly SecretStore _secrets;
-    private readonly OpenRouterClient _client;
+    private readonly ChatCompletionsClient _client;
     private readonly AppMessageWindow _messages;
     private readonly CorrectionCoordinator _coordinator;
     private readonly UpdateCoordinator _updates;
@@ -35,7 +35,7 @@ public sealed class TrayApp : IDisposable
         _settings.Load();
 
         _secrets = new SecretStore();
-        _client = new OpenRouterClient(_settings, _secrets);
+        _client = new ChatCompletionsClient(_settings, _secrets);
         _coordinator = new CorrectionCoordinator(new TextCaptureService(), _client, _settings, Notify);
         _updates = new UpdateCoordinator(_settings, () => _settingsWindow);
 

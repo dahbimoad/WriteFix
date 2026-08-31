@@ -114,7 +114,19 @@
                         </Grid>
 
                         <StackPanel Margin="20,18,20,20">
-                            <TextBlock Text="OpenRouter API key" Style="{StaticResource FieldLabel}" />
+                            <TextBlock Text="Provider" Style="{StaticResource FieldLabel}" />
+                            <ComboBox x:Name="ProviderBox" IsEditable="True"
+                                      Style="{StaticResource FieldCombo}"
+                                      AutomationProperties.Name="API base URL"
+                                      MaxDropDownHeight="220"
+                                      PreviewMouseWheel="OnNestedScroll"
+                                      SelectionChanged="OnProviderChanged" />
+                            <TextBlock Style="{StaticResource HelpText}"
+                                       Text="Any OpenAI-compatible API. Groq is free and fastest; pick one, then paste that provider's key below." />
+
+                            <Border Height="1" Background="{StaticResource Border}" Margin="0,18" />
+
+                            <TextBlock Text="API key" Style="{StaticResource FieldLabel}" />
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
@@ -124,7 +136,7 @@
 
                                 <PasswordBox Grid.Column="0" x:Name="ApiKeyBox"
                                              Style="{StaticResource FieldPassword}"
-                                             AutomationProperties.Name="OpenRouter API key"
+                                             AutomationProperties.Name="API key"
                                              VerticalContentAlignment="Center" />
                                 <Button Grid.Column="1" x:Name="TestButton" Content="Test"
                                         Margin="9,0,0,0" Style="{StaticResource QuietButton}"
@@ -140,11 +152,11 @@
                             <TextBlock Text="Model" Style="{StaticResource FieldLabel}" />
                             <ComboBox x:Name="ModelBox" IsEditable="True"
                                       Style="{StaticResource FieldCombo}"
-                                      AutomationProperties.Name="OpenRouter model"
+                                      AutomationProperties.Name="Model"
                                       MaxDropDownHeight="220"
                                       PreviewMouseWheel="OnNestedScroll" />
                             <TextBlock Style="{StaticResource HelpText}"
-                                       Text="Free models are rate-limited. Paid models such as Claude Haiku are usually faster and more consistent." />
+                                       Text="Free models are rate-limited. If corrections start failing, try another model here before touching your key." />
                         </StackPanel>
                     </StackPanel>
                 </Border>

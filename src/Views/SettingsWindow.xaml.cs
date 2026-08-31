@@ -9,6 +9,7 @@ using WriteFix.Services.Settings;
 using WriteFix.Services.Updates;
 using Brush = System.Windows.Media.Brush;
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
+using SelectionChangedEventArgs = System.Windows.Controls.SelectionChangedEventArgs;
 using TextBox = System.Windows.Controls.TextBox;
 
 namespace WriteFix.Views;
@@ -16,25 +17,39 @@ namespace WriteFix.Views;
 public partial class SettingsWindow : Window
 {
     /// <summary>
-    /// Starting points in the model box. Free slugs come and go on OpenRouter, so the
-    /// field stays editable — this is a shortlist, not a whitelist.
+    /// A provider WriteFix has actually been tested against, and the models worth
+    /// starting from on it. Both boxes stay editable — this is a shortlist, not a
+    /// whitelist, and any OpenAI-compatible endpoint works.
     /// </summary>
-    private static readonly string[] SuggestedModels =
+    private sealed record Provider(string BaseUrl, string KeyPage, string[] Models);
+
+    private static readonly Provider[] Providers =
     [
-        // Free, and measured fastest and cleanest on EN + FR of the free slugs.
-        "google/gemma-4-26b-a4b-it:free",
-        "google/gemma-4-31b-it:free",
-        "openai/gpt-oss-20b:free",
-        // Free auto-router: survives individual free slugs disappearing, but slower.
-        "openrouter/free",
-        // Paid — need credit on the OpenRouter account.
-        "qwen/qwen3-32b",
-        "anthropic/claude-haiku-4.5",
+        new(AppSettings.GroqBaseUrl, "console.groq.com/keys",
+        [
+            // Measured 2026-08-31 against the production prompt. gpt-oss-120b was
+            // fastest (~570ms) and the only one that got the French elision and
+            // accents right; both gpt-oss models keep their reasoning in a separate
+            // field. qwen3.8 is quick but answers the text instead of correcting it
+            // when the text looks like an instruction.
+            "openai/gpt-oss-120b",
+            "openai/gpt-oss-20b",
+            "qwen/qwen3.8-27b",
+        ]),
+        new(AppSettings.OpenRouterBaseUrl, "openrouter.ai/keys",
+        [
+            // Free here means a pool shared with every other OpenRouter user, so
+            // these 429 for reasons that have nothing to do with your key.
+            "google/gemma-4-26b-a4b-it:free",
+            "openrouter/free",
+            // Paid — need credit on the account.
+            "anthropic/claude-haiku-4.5",
+        ]),
     ];
 
     private readonly SettingsStore _settings;
     private readonly SecretStore _secrets;
-    private readonly OpenRouterClient _client;
+    private readonly ChatCompletionsClient _client;
     private readonly UpdateCoordinator _updates;
 
     /// <summary>Re-registers the global hotkey; false means another app already owns it.</summary>
@@ -42,11 +57,12 @@ public partial class SettingsWindow : Window
 
     private HotkeySpec _hotkey;
     private bool _keyEdited;
+    private bool _loading;
 
     public SettingsWindow(
         SettingsStore settings,
         SecretStore secrets,
-        OpenRouterClient client,
+        ChatCompletionsClient client,
         UpdateCoordinator updates,
         Func<HotkeySpec, bool> applyHotkey)
     {
@@ -61,8 +77,15 @@ public partial class SettingsWindow : Window
         var current = settings.Current;
         _hotkey = HotkeySpec.ParseOrDefault(current.Hotkey);
 
-        foreach (var model in SuggestedModels) ModelBox.Items.Add(model);
+        // Setting Text below can select a matching item, which would fire
+        // OnProviderChanged and overwrite the saved model with a preset.
+        _loading = true;
+        foreach (var provider in Providers) ProviderBox.Items.Add(provider.BaseUrl);
+        ProviderBox.Text = current.ApiBaseUrl;
+
+        foreach (var model in ModelsFor(current.ApiBaseUrl)) ModelBox.Items.Add(model);
         ModelBox.Text = current.Model;
+        _loading = false;
 
         PromptBox.Text = current.StyleInstructions;
         HotkeyBox.Text = _hotkey.ToString();
@@ -79,7 +102,7 @@ public partial class SettingsWindow : Window
     {
         KeyStatusText.Text = _secrets.HasKey
             ? "A key is saved and encrypted for your Windows account. Leave the box empty to keep it."
-            : "Create a key at openrouter.ai/keys, then paste it here.";
+            : $"Create a key at {KeyPageFor(ProviderBox.Text)}, then paste it here.";
     }
 
     // ---- Scrolling ---------------------------------------------------------
@@ -151,6 +174,37 @@ public partial class SettingsWindow : Window
 
     // ---- Commands ----------------------------------------------------------
 
+    /// <summary>
+    /// Switching provider makes the current model id meaningless — a Groq id is not a
+    /// slug OpenRouter knows — so the model list and the pick are both replaced. Only
+    /// a real user choice does this; loading the window does not.
+    /// </summary>
+    private void OnProviderChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loading || ProviderBox.SelectedItem is not string baseUrl) return;
+
+        var models = ModelsFor(baseUrl);
+
+        ModelBox.Items.Clear();
+        foreach (var model in models) ModelBox.Items.Add(model);
+        ModelBox.Text = models.FirstOrDefault() ?? "";
+
+        UpdateKeyStatus();
+        SetFooter(_secrets.HasKey
+            ? "Provider changed. The saved key belongs to the old one — paste a new key before saving."
+            : "Provider changed.");
+    }
+
+    private static string[] ModelsFor(string baseUrl) =>
+        Match(baseUrl)?.Models ?? [];
+
+    private static string KeyPageFor(string baseUrl) =>
+        Match(baseUrl)?.KeyPage ?? "your provider's console";
+
+    private static Provider? Match(string baseUrl) =>
+        Providers.FirstOrDefault(p =>
+            string.Equals(p.BaseUrl, baseUrl?.Trim().TrimEnd('/'), StringComparison.OrdinalIgnoreCase));
+
     private async void OnTestConnection(object sender, RoutedEventArgs e)
     {
         // Test what is typed if anything was typed, otherwise what is already stored.
@@ -167,7 +221,8 @@ public partial class SettingsWindow : Window
 
         try
         {
-            var (ok, message) = await _client.TestConnectionAsync(key, CancellationToken.None);
+            var (ok, message) = await _client.TestConnectionAsync(
+                ProviderBox.Text.Trim(), key, ModelBox.Text.Trim(), CancellationToken.None);
             SetFooter(message, isError: !ok);
         }
         finally
@@ -234,6 +289,7 @@ public partial class SettingsWindow : Window
         }
 
         var updated = _settings.Current.Clone();
+        updated.ApiBaseUrl = ProviderBox.Text.Trim();
         updated.Model = string.IsNullOrWhiteSpace(ModelBox.Text) ? AppSettings.DefaultModel : ModelBox.Text.Trim();
         updated.StyleInstructions = PromptBox.Text;
         updated.Hotkey = _hotkey.ToString();

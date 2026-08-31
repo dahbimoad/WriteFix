@@ -7,12 +7,14 @@ using WriteFix.Services.Platform;
 namespace WriteFix.Services.Settings;
 
 /// <summary>
-/// The OpenRouter API key, encrypted at rest with DPAPI (current user). The
+/// The provider API key, encrypted at rest with DPAPI (current user). The
 /// ciphertext is only decryptable by this Windows account on this machine.
 /// </summary>
 public sealed class SecretStore
 {
     // Ties the ciphertext to WriteFix so a blob lifted from another app won't decrypt.
+    // The literal is load-bearing: changing it makes every already-stored key
+    // undecryptable, so it keeps its original OpenRouter-era name.
     private static readonly byte[] Entropy = "WriteFix.OpenRouter.v1"u8.ToArray();
 
     public bool HasKey => File.Exists(AppPaths.ApiKeyFile);

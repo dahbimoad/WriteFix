@@ -17,7 +17,7 @@ namespace WriteFix.Services.Correction;
 public sealed class CorrectionCoordinator
 {
     private readonly TextCaptureService _capture;
-    private readonly OpenRouterClient _client;
+    private readonly ChatCompletionsClient _client;
     private readonly SettingsStore _settings;
     private readonly Action<string> _notify;
 
@@ -29,7 +29,7 @@ public sealed class CorrectionCoordinator
 
     public CorrectionCoordinator(
         TextCaptureService capture,
-        OpenRouterClient client,
+        ChatCompletionsClient client,
         SettingsStore settings,
         Action<string> notify)
     {
