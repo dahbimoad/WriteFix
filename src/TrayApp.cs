@@ -2,6 +2,7 @@ using System.Drawing;
 using System.Windows;
 using System.Windows.Forms;
 using WriteFix.Interop;
+using WriteFix.Models;
 using WriteFix.Services.Ai;
 using WriteFix.Services.Capture;
 using WriteFix.Services.Correction;
@@ -22,7 +23,7 @@ public sealed class TrayApp : IDisposable
     private readonly NotifyIcon _icon;
     private readonly SettingsStore _settings;
     private readonly SecretStore _secrets;
-    private readonly ChatCompletionsClient _client;
+    private readonly AiRouter _ai;
     private readonly AppMessageWindow _messages;
     private readonly CorrectionCoordinator _coordinator;
     private readonly UpdateCoordinator _updates;
@@ -35,8 +36,8 @@ public sealed class TrayApp : IDisposable
         _settings.Load();
 
         _secrets = new SecretStore();
-        _client = new ChatCompletionsClient(_settings, _secrets);
-        _coordinator = new CorrectionCoordinator(new TextCaptureService(), _client, _settings, Notify);
+        _ai = new AiRouter(_settings, _secrets);
+        _coordinator = new CorrectionCoordinator(new TextCaptureService(), _ai, _settings, Notify);
         _updates = new UpdateCoordinator(_settings, () => _settingsWindow);
 
         _messages = new AppMessageWindow();
@@ -45,7 +46,7 @@ public sealed class TrayApp : IDisposable
 
         _icon = BuildTrayIcon();
 
-        ApplyHotkey(HotkeySpec.ParseOrDefault(_settings.Current.Hotkey));
+        RegisterHotkeys();
 
         // Opted-in users only, once a day. Everyone else hears nothing until they
         // press Check for updates themselves.
@@ -55,7 +56,8 @@ public sealed class TrayApp : IDisposable
     private NotifyIcon BuildTrayIcon()
     {
         var menu = new ContextMenuStrip();
-        menu.Items.Add("Correct now", null, (_, _) => _coordinator.Run());
+        menu.Items.Add("Fix now", null, (_, _) => _coordinator.Run(CorrectionMode.Fix));
+        menu.Items.Add("Rephrase now", null, (_, _) => _coordinator.Run(CorrectionMode.Rephrase));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Settings…", null, (_, _) => OpenSettings());
         menu.Items.Add("Check for updates…", null, (_, _) => CheckForUpdates());
@@ -119,7 +121,7 @@ public sealed class TrayApp : IDisposable
         // The card and Settings competing for focus helps nobody.
         _coordinator.Dismiss();
 
-        _settingsWindow = new SettingsWindow(_settings, _secrets, _client, _updates, ApplyHotkey);
+        _settingsWindow = new SettingsWindow(_settings, _secrets, _ai, _updates, _messages);
         _settingsWindow.Closed += (_, _) => _settingsWindow = null;
         _settingsWindow.Show();
         BringToFront(_settingsWindow);
@@ -142,15 +144,13 @@ public sealed class TrayApp : IDisposable
         window.Focus();
     }
 
-    /// <summary>Registers <paramref name="spec"/>; false means another app already owns it.</summary>
-    private bool ApplyHotkey(HotkeySpec spec)
+    private void RegisterHotkeys()
     {
-        var registered = _messages.RegisterHotkey(spec);
+        var taken = _messages.RegisterSavedHotkeys(_settings.Current);
 
-        if (!registered)
-            Notify($"{spec} is already used by another app. Choose a different hotkey in Settings.");
-
-        return registered;
+        if (taken.Count > 0)
+            Notify($"{string.Join(" and ", taken)} {(taken.Count == 1 ? "is" : "are")} already used by another app. " +
+                   "Choose a different shortcut in Settings.");
     }
 
     private void Notify(string message)
@@ -162,7 +162,7 @@ public sealed class TrayApp : IDisposable
     public void Dispose()
     {
         _messages.Dispose();
-        _client.Dispose();
+        _ai.Dispose();
         _updates.Dispose();
 
         _icon.Visible = false;

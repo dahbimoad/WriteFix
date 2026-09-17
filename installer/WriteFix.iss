@@ -7,7 +7,7 @@
 ; end up running as administrator.
 
 #define AppName        "WriteFix"
-#define AppVersion     "1.3.0"
+#define AppVersion     "1.4.0"
 ; The company publishes it, the author owns it. Windows shows the publisher in
 ; Settings > Apps and on the SmartScreen prompt.
 #define AppPublisher   "iSoutien"

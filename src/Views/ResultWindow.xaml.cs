@@ -34,25 +34,46 @@ public partial class ResultWindow : Window
     public event Action? CopyRequested;
     public event Action? Cancelled;
 
+    /// <summary>Raised when the user picks the other mode on the card's switch.</summary>
+    public event Action<CorrectionMode>? ModeSwitchRequested;
+
     /// <summary>Screen point, in physical pixels, that the card should appear beside.</summary>
     public void SetAnchor(int x, int y) => _anchor = (x, y);
 
+    /// <summary>Shows or hides the Fix / Rephrase switch; hidden when Settings locks the mode.</summary>
+    public void SetModeSwitchVisible(bool visible) =>
+        ModeSwitch.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+
     // ---- States ------------------------------------------------------------
 
-    public void ShowWorking(CaptureMode mode)
+    public void ShowWorking(CaptureMode captureMode, CorrectionMode mode)
     {
-        ModeChipText.Text = mode == CaptureMode.Selection ? "selection" : "whole message";
+        ModeChipText.Text = captureMode == CaptureMode.Selection ? "selection" : "whole message";
         HintText.Text = "Esc cancel";
+
+        FixOption.IsChecked = mode == CorrectionMode.Fix;
+        RephraseOption.IsChecked = mode == CorrectionMode.Rephrase;
+
+        (WorkingTitle.Text, WorkingSubtitle.Text) = mode == CorrectionMode.Rephrase
+            ? ("Rephrasing your writing…", "Rewriting it the way your instructions ask.")
+            : ("Fixing your writing…", "Keeping your words, correcting the errors.");
 
         WorkingPanel.Visibility = Visibility.Visible;
         ErrorPanel.Visibility = Visibility.Collapsed;
         ResultPanel.Visibility = Visibility.Collapsed;
 
-        AcceptButton.IsEnabled = false;
-        RegenerateButton.IsEnabled = false;
-        CopyButton.IsEnabled = false;
-
+        SetActionsEnabled(false);
         StartPulse();
+    }
+
+    /// <summary>Every button that starts a new request or uses the result; the ones that finish the card stay live.</summary>
+    private void SetActionsEnabled(bool enabled)
+    {
+        AcceptButton.IsEnabled = enabled;
+        RegenerateButton.IsEnabled = enabled;
+        CopyButton.IsEnabled = enabled;
+        FixOption.IsEnabled = enabled;
+        RephraseOption.IsEnabled = enabled;
     }
 
     public void ShowResult(string original, string corrected, bool canReplace, string notice)
@@ -68,9 +89,8 @@ public partial class ResultWindow : Window
         NoticeText.Text = notice;
         NoticeText.Visibility = string.IsNullOrEmpty(notice) ? Visibility.Collapsed : Visibility.Visible;
 
+        SetActionsEnabled(true);
         AcceptButton.IsEnabled = canReplace;
-        RegenerateButton.IsEnabled = true;
-        CopyButton.IsEnabled = true;
 
         HintText.Text = canReplace ? "Enter  ·  Esc" : "Esc cancel";
 
@@ -87,8 +107,8 @@ public partial class ResultWindow : Window
         ErrorPanel.Visibility = Visibility.Visible;
         ErrorText.Text = message;
 
+        SetActionsEnabled(true);
         AcceptButton.IsEnabled = false;
-        RegenerateButton.IsEnabled = true;
         CopyButton.IsEnabled = false;
         HintText.Text = "Esc close";
     }
@@ -222,6 +242,9 @@ public partial class ResultWindow : Window
     }
 
     private void OnRegenerate(object sender, RoutedEventArgs e) => RegenerateRequested?.Invoke();
+
+    private void OnModeOptionClick(object sender, RoutedEventArgs e) =>
+        ModeSwitchRequested?.Invoke(sender == RephraseOption ? CorrectionMode.Rephrase : CorrectionMode.Fix);
 
     private void OnCopy(object sender, RoutedEventArgs e)
     {

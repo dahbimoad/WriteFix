@@ -13,9 +13,17 @@ public static class AppPaths
     public static string LogFile => Path.Combine(LogDirectory, "writefix.log");
     public static string LogBackupFile => Path.Combine(LogDirectory, "writefix.previous.log");
 
+    /// <summary>
+    /// An always-empty working folder for the OpenCode server. OpenCode treats its
+    /// working folder as a project, and a request made inside a real project folder
+    /// was measurably larger in testing, so it never runs anywhere that has files.
+    /// </summary>
+    public static string OpenCodeWorkspace => Path.Combine(Root, "OpenCode");
+
     public static void EnsureCreated()
     {
         Directory.CreateDirectory(Root);
         Directory.CreateDirectory(LogDirectory);
+        Directory.CreateDirectory(OpenCodeWorkspace);
     }
 }

@@ -22,11 +22,16 @@ governed by a prompt you control.
 ## How it works
 
 1. Write your message anywhere — Teams, Outlook, a browser, Notepad.
-2. Press **Ctrl+Alt+F**.
-   - Text selected → that selection is corrected.
+2. Press **Ctrl+Alt+F** to fix it, or **Ctrl+Alt+R** to rephrase it.
+   - Text selected → that selection is used.
    - Nothing selected → the whole field is.
-3. The card shows **Working…**, then the corrected text with changed words highlighted.
+3. The card shows **Working…**, then the new text with changed words highlighted.
+   The **Fix / Rephrase** switch on the card redoes the same text in the other mode.
 4. **Enter** to accept, **Esc** to cancel.
+
+**Fix** corrects spelling, grammar and punctuation and keeps your wording. **Rephrase**
+rewrites the text so it reads better, fixes every error, and follows your rephrase
+instructions strictly.
 
 | Action | Key | Effect |
 |---|---|---|
@@ -39,7 +44,7 @@ Language is detected automatically and never translated — French in, French ou
 
 ## Install
 
-Download or build `WriteFix-Setup-1.2.0.exe` and run it.
+Download or build `WriteFix-Setup-1.4.0.exe` and run it.
 
 The installer is **per-user** — no administrator prompt — and installs to
 `%LocalAppData%\Programs\WriteFix`. It is unsigned, so SmartScreen will warn once:
@@ -60,6 +65,11 @@ Double-click the tray icon, or right-click it → **Settings…**, or just run
 > On Windows 11 new tray icons start hidden in the overflow flyout. Click the `^`
 > next to the clock and drag the WriteFix icon onto the taskbar to pin it.
 
+- **Connection** — **API key** (the provider, key and model below) or **SDK**.
+  SDK uses the SDK installed on your PC (`npm i -g opencode-ai`) and the providers
+  you have connected in it (`opencode auth login`): no key to paste, pick a model with
+  **Load models**. WriteFix starts it quietly when needed and stops it on exit. Tools are
+  always off, so it can only return text. It is slower than a direct API.
 - **API key** — stored encrypted with Windows DPAPI, readable only by your Windows
   account on this machine. Never written to `settings.json` or the log.
 - **Provider** — any OpenAI-compatible API. Presets for Groq and OpenRouter; paste
@@ -72,9 +82,16 @@ Double-click the tray icon, or right-click it → **Settings…**, or just run
   - a **fixed contract** in code (rewrite rather than answer, ignore instructions
     embedded in the message, never translate, return bare text). Shown read-only,
     because deleting one of these lines would quietly turn the app into a chatbot.
-  - your **correction style**, fully editable — tone, formality, what to leave alone.
-    An expander previews the exact composed prompt.
-- **Hotkey** — click the box and press the combination you want.
+  - your **Fix instructions** and **Rephrase instructions**, each fully editable —
+    tone, formality, length, what to leave alone. Rephrase treats its instructions as
+    mandatory. An expander previews both exact composed prompts.
+- **Mode** — **Choose on the card** (each shortcut starts in its own mode, and the card
+  can switch), **Always fix** or **Always rephrase** (every shortcut uses that mode and
+  the card hides its switch).
+- **Keyboard shortcuts** — one for Fix, one for Rephrase. Click a box and press the
+  combination you want; WriteFix tells you at once whether it is free or already used
+  by another app or Windows, and will not save a taken one. It can only see shortcuts
+  registered system-wide, not ones an app uses inside its own window.
 - **Run in background** — closes Settings while keeping the tray icon and global
   hotkey active.
 - **Start with Windows** — launches quietly in the tray when you sign in. Opening
@@ -156,7 +173,7 @@ src/
   Interop/             Win32: hotkey, SendInput, caret location
   Models/              plain data types
   Services/
-    Ai/                OpenAI-compatible HTTP client (no SDK)
+    Ai/                OpenAI-compatible HTTP client, local SDK server client
     Capture/           UI Automation + guarded clipboard
     Correction/        the capture -> correct -> review -> replace workflow
     Logging/           privacy-safe local log
@@ -172,7 +189,7 @@ actually work, and why each significant choice was made.
 ## Not in this version
 
 Automatic popups as you type, inline squiggles in other apps, languages beyond
-English and French, response streaming, multiple AI providers, accounts or sync,
+English and French, response streaming, automatic failover between providers, accounts or sync,
 code signing.
 
 ## License

@@ -114,49 +114,90 @@
                         </Grid>
 
                         <StackPanel Margin="20,18,20,20">
-                            <TextBlock Text="Provider" Style="{StaticResource FieldLabel}" />
-                            <ComboBox x:Name="ProviderBox" IsEditable="True"
-                                      Style="{StaticResource FieldCombo}"
-                                      AutomationProperties.Name="API base URL"
-                                      MaxDropDownHeight="220"
-                                      PreviewMouseWheel="OnNestedScroll"
-                                      SelectionChanged="OnProviderChanged" />
-                            <TextBlock Style="{StaticResource HelpText}"
-                                       Text="Any OpenAI-compatible API. Groq is free and fastest; pick one, then paste that provider's key below." />
+                            <TextBlock Text="Connection" Style="{StaticResource FieldLabel}" />
+                            <Border Style="{StaticResource SegmentTrack}">
+                                <StackPanel Orientation="Horizontal">
+                                    <RadioButton x:Name="ConnectionApiOption" GroupName="Connection"
+                                                 Content="API key" Style="{StaticResource SegmentOption}"
+                                                 Checked="OnConnectionChanged" />
+                                    <RadioButton x:Name="ConnectionOpenCodeOption" GroupName="Connection"
+                                                 Content="SDK" Style="{StaticResource SegmentOption}"
+                                                 Checked="OnConnectionChanged" />
+                                </StackPanel>
+                            </Border>
 
                             <Border Height="1" Background="{StaticResource Border}" Margin="0,18" />
 
-                            <TextBlock Text="API key" Style="{StaticResource FieldLabel}" />
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
+                            <StackPanel x:Name="ApiPanel">
+                                <TextBlock Text="Provider" Style="{StaticResource FieldLabel}" />
+                                <ComboBox x:Name="ProviderBox" IsEditable="True"
+                                          Style="{StaticResource FieldCombo}"
+                                          AutomationProperties.Name="API base URL"
+                                          MaxDropDownHeight="220"
+                                          PreviewMouseWheel="OnNestedScroll"
+                                          SelectionChanged="OnProviderChanged" />
+                                <TextBlock Style="{StaticResource HelpText}"
+                                           Text="Any OpenAI-compatible API. Groq is free and fastest; pick one, then paste that provider's key below." />
 
-                                <PasswordBox Grid.Column="0" x:Name="ApiKeyBox"
-                                             Style="{StaticResource FieldPassword}"
-                                             AutomationProperties.Name="API key"
-                                             VerticalContentAlignment="Center" />
-                                <Button Grid.Column="1" x:Name="TestButton" Content="Test"
-                                        Margin="9,0,0,0" Style="{StaticResource QuietButton}"
-                                        Click="OnTestConnection" />
-                                <Button Grid.Column="2" x:Name="ClearKeyButton" Content="Clear"
-                                        Margin="8,0,0,0" Style="{StaticResource QuietButton}"
-                                        Click="OnClearKey" />
-                            </Grid>
-                            <TextBlock x:Name="KeyStatusText" Style="{StaticResource HelpText}" />
+                                <Border Height="1" Background="{StaticResource Border}" Margin="0,18" />
 
-                            <Border Height="1" Background="{StaticResource Border}" Margin="0,18" />
+                                <TextBlock Text="API key" Style="{StaticResource FieldLabel}" />
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
 
-                            <TextBlock Text="Model" Style="{StaticResource FieldLabel}" />
-                            <ComboBox x:Name="ModelBox" IsEditable="True"
-                                      Style="{StaticResource FieldCombo}"
-                                      AutomationProperties.Name="Model"
-                                      MaxDropDownHeight="220"
-                                      PreviewMouseWheel="OnNestedScroll" />
-                            <TextBlock Style="{StaticResource HelpText}"
-                                       Text="Free models are rate-limited. If corrections start failing, try another model here before touching your key." />
+                                    <PasswordBox Grid.Column="0" x:Name="ApiKeyBox"
+                                                 Style="{StaticResource FieldPassword}"
+                                                 AutomationProperties.Name="API key"
+                                                 VerticalContentAlignment="Center" />
+                                    <Button Grid.Column="1" x:Name="TestButton" Content="Test"
+                                            Margin="9,0,0,0" Style="{StaticResource QuietButton}"
+                                            Click="OnTestConnection" />
+                                    <Button Grid.Column="2" x:Name="ClearKeyButton" Content="Clear"
+                                            Margin="8,0,0,0" Style="{StaticResource QuietButton}"
+                                            Click="OnClearKey" />
+                                </Grid>
+                                <TextBlock x:Name="KeyStatusText" Style="{StaticResource HelpText}" />
+
+                                <Border Height="1" Background="{StaticResource Border}" Margin="0,18" />
+
+                                <TextBlock Text="Model" Style="{StaticResource FieldLabel}" />
+                                <ComboBox x:Name="ModelBox" IsEditable="True"
+                                          Style="{StaticResource FieldCombo}"
+                                          AutomationProperties.Name="Model"
+                                          MaxDropDownHeight="220"
+                                          PreviewMouseWheel="OnNestedScroll" />
+                                <TextBlock Style="{StaticResource HelpText}"
+                                           Text="Free models are rate-limited. If corrections start failing, try another model here before touching your key." />
+                            </StackPanel>
+
+                            <StackPanel x:Name="OpenCodePanel" Visibility="Collapsed">
+                                <TextBlock Text="SDK model" Style="{StaticResource FieldLabel}" />
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <ComboBox Grid.Column="0" x:Name="OpenCodeModelBox" IsEditable="True"
+                                              Style="{StaticResource FieldCombo}"
+                                              AutomationProperties.Name="SDK model"
+                                              MaxDropDownHeight="260"
+                                              PreviewMouseWheel="OnNestedScroll" />
+                                    <Button Grid.Column="1" x:Name="LoadOpenCodeModelsButton" Content="Load models"
+                                            Margin="9,0,0,0" Style="{StaticResource QuietButton}"
+                                            Click="OnLoadOpenCodeModels" />
+                                    <Button Grid.Column="2" x:Name="TestOpenCodeButton" Content="Test"
+                                            Margin="8,0,0,0" Style="{StaticResource QuietButton}"
+                                            Click="OnTestOpenCode" />
+                                </Grid>
+                                <TextBlock Style="{StaticResource HelpText}"
+                                           Text="Written as provider/model. WriteFix starts the SDK quietly when it is needed and uses the providers you connected in it (opencode auth login), so there is no key to paste here. Tools are always off: the SDK can only return text." />
+                            </StackPanel>
                         </StackPanel>
                     </StackPanel>
                 </Border>
@@ -200,13 +241,29 @@
                                                    FontWeight="SemiBold" Foreground="{StaticResource HighlightInk}" />
                                         <TextBlock Margin="0,5,0,0" FontSize="11.5" LineHeight="17"
                                                    TextWrapping="Wrap" Foreground="{StaticResource ProtectedText}"
-                                                   Text="WriteFix rewrites rather than answers, keeps English or French unchanged, and returns only the corrected text." />
+                                                   Text="WriteFix rewrites rather than answers, keeps English or French unchanged, and returns only the rewritten text." />
                                     </StackPanel>
                                 </Grid>
                             </Border>
 
+                            <TextBlock Text="Mode" Style="{StaticResource FieldLabel}" Margin="0,18,0,7" />
+                            <Border Style="{StaticResource SegmentTrack}">
+                                <StackPanel Orientation="Horizontal">
+                                    <RadioButton x:Name="ModeChooseOption" GroupName="SettingsMode"
+                                                 Content="Choose on the card" Style="{StaticResource SegmentOption}"
+                                                 Checked="OnLockedModeChanged" />
+                                    <RadioButton x:Name="ModeFixOption" GroupName="SettingsMode"
+                                                 Content="Always fix" Style="{StaticResource SegmentOption}"
+                                                 Checked="OnLockedModeChanged" />
+                                    <RadioButton x:Name="ModeRephraseOption" GroupName="SettingsMode"
+                                                 Content="Always rephrase" Style="{StaticResource SegmentOption}"
+                                                 Checked="OnLockedModeChanged" />
+                                </StackPanel>
+                            </Border>
+                            <TextBlock x:Name="ModeHelpText" Style="{StaticResource HelpText}" />
+
                             <Grid Margin="0,18,0,7">
-                                <TextBlock Text="Your instructions" Style="{StaticResource FieldLabel}"
+                                <TextBlock Text="Fix instructions" Style="{StaticResource FieldLabel}"
                                            Margin="0" VerticalAlignment="Center" />
                                 <Button x:Name="ResetPromptButton" Content="Reset to default"
                                         HorizontalAlignment="Right" VerticalAlignment="Center"
@@ -214,17 +271,33 @@
                             </Grid>
 
                             <TextBox x:Name="PromptBox" Style="{StaticResource FieldBox}"
-                                     AutomationProperties.Name="Correction style instructions"
+                                     AutomationProperties.Name="Fix instructions"
                                      Height="150" TextWrapping="Wrap" AcceptsReturn="True"
                                      VerticalScrollBarVisibility="Auto"
                                      PreviewMouseWheel="OnNestedScroll" />
                             <TextBlock Style="{StaticResource HelpText}"
-                                       Text="Describe tone, formality, or wording to preserve. Changes apply to the next correction without restarting WriteFix." />
+                                       Text="How Fix corrects your text while keeping your wording. Changes apply to the next correction without restarting WriteFix." />
+
+                            <Grid Margin="0,18,0,7">
+                                <TextBlock Text="Rephrase instructions" Style="{StaticResource FieldLabel}"
+                                           Margin="0" VerticalAlignment="Center" />
+                                <Button x:Name="ResetRephrasePromptButton" Content="Reset to default"
+                                        HorizontalAlignment="Right" VerticalAlignment="Center"
+                                        Style="{StaticResource MicroButton}" Click="OnResetRephrasePrompt" />
+                            </Grid>
+
+                            <TextBox x:Name="RephrasePromptBox" Style="{StaticResource FieldBox}"
+                                     AutomationProperties.Name="Rephrase instructions"
+                                     Height="150" TextWrapping="Wrap" AcceptsReturn="True"
+                                     VerticalScrollBarVisibility="Auto"
+                                     PreviewMouseWheel="OnNestedScroll" />
+                            <TextBlock Style="{StaticResource HelpText}"
+                                       Text="Rephrase rewrites the text freely, fixes every error, and follows each of these instructions strictly: tone, length, structure, words to use or avoid." />
 
                             <Expander Style="{StaticResource QuietExpander}" Margin="0,15,0,0"
                                       Expanded="OnPreviewExpanded">
                                 <Expander.Header>
-                                    <TextBlock Text="Preview the complete model prompt"
+                                    <TextBlock Text="Preview the complete model prompts"
                                                FontSize="11.5" FontWeight="SemiBold"
                                                Foreground="{StaticResource InkSoft}" />
                                 </Expander.Header>
@@ -240,45 +313,64 @@
                     </StackPanel>
                 </Border>
 
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="14" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
+                <Border Style="{StaticResource Card}">
+                    <StackPanel Margin="20,18,20,20">
+                        <TextBlock Text="Keyboard shortcuts" Style="{StaticResource SectionTitle}" />
+                        <TextBlock Text="Click a box, then press a combination with Ctrl, Alt, Shift or Win. WriteFix checks right away whether another app already uses it."
+                                   Style="{StaticResource SectionSubtitle}" Margin="0,3,0,14" />
 
-                    <Border Grid.Column="0" Style="{StaticResource Card}">
-                        <StackPanel Margin="20,18,20,20">
-                            <TextBlock Text="Keyboard shortcut" Style="{StaticResource SectionTitle}" />
-                            <TextBlock Text="Summon WriteFix from any message."
-                                       Style="{StaticResource SectionSubtitle}" Margin="0,3,0,14" />
-                            <TextBox x:Name="HotkeyBox" Style="{StaticResource FieldBox}"
-                                     AutomationProperties.Name="WriteFix keyboard shortcut"
-                                     HorizontalAlignment="Stretch" FontFamily="{StaticResource MonoFont}"
-                                     FontWeight="SemiBold" IsReadOnly="True" Cursor="Hand"
-                                     TextAlignment="Center" PreviewKeyDown="OnHotkeyKeyDown" />
-                            <TextBlock Style="{StaticResource HelpText}"
-                                       Text="Click, then press a combination with Ctrl, Alt, Shift, or Win." />
-                        </StackPanel>
-                    </Border>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="14" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
 
-                    <Border Grid.Column="2" Style="{StaticResource Card}">
-                        <StackPanel Margin="20,18,20,20">
-                            <TextBlock Text="Ready when you are" Style="{StaticResource SectionTitle}" />
-                            <TextBlock Text="Keep the assistant quietly available."
-                                       Style="{StaticResource SectionSubtitle}" Margin="0,3,0,16" />
-                            <Border Background="{StaticResource Well}" CornerRadius="11" Padding="13,11">
-                                <StackPanel>
-                                    <CheckBox x:Name="StartupBox" Style="{StaticResource FieldCheck}"
-                                              AutomationProperties.Name="Start WriteFix with Windows"
-                                              Content="Start with Windows" />
-                                    <TextBlock Text="Launches quietly in the tray when you sign in."
-                                               Style="{StaticResource HelpText}" Margin="31,6,0,0" />
-                                </StackPanel>
-                            </Border>
-                        </StackPanel>
-                    </Border>
-                </Grid>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Fix" Style="{StaticResource FieldLabel}" />
+                                <TextBox x:Name="FixHotkeyBox" Style="{StaticResource FieldBox}"
+                                         AutomationProperties.Name="Fix keyboard shortcut"
+                                         FontFamily="{StaticResource MonoFont}"
+                                         FontWeight="SemiBold" IsReadOnly="True" Cursor="Hand"
+                                         IsReadOnlyCaretVisible="False" TextAlignment="Center"
+                                         PreviewKeyDown="OnHotkeyKeyDown"
+                                         GotKeyboardFocus="OnHotkeyGotFocus"
+                                         LostKeyboardFocus="OnHotkeyLostFocus" />
+                                <TextBlock x:Name="FixHotkeyStatus" Style="{StaticResource HelpText}" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="Rephrase" Style="{StaticResource FieldLabel}" />
+                                <TextBox x:Name="RephraseHotkeyBox" Style="{StaticResource FieldBox}"
+                                         AutomationProperties.Name="Rephrase keyboard shortcut"
+                                         FontFamily="{StaticResource MonoFont}"
+                                         FontWeight="SemiBold" IsReadOnly="True" Cursor="Hand"
+                                         IsReadOnlyCaretVisible="False" TextAlignment="Center"
+                                         PreviewKeyDown="OnHotkeyKeyDown"
+                                         GotKeyboardFocus="OnHotkeyGotFocus"
+                                         LostKeyboardFocus="OnHotkeyLostFocus" />
+                                <TextBlock x:Name="RephraseHotkeyStatus" Style="{StaticResource HelpText}" />
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource Card}" Margin="0,16,0,0">
+                    <StackPanel Margin="20,18,20,20">
+                        <TextBlock Text="Ready when you are" Style="{StaticResource SectionTitle}" />
+                        <TextBlock Text="Keep the assistant quietly available."
+                                   Style="{StaticResource SectionSubtitle}" Margin="0,3,0,16" />
+                        <Border Background="{StaticResource Well}" CornerRadius="11" Padding="13,11">
+                            <StackPanel>
+                                <CheckBox x:Name="StartupBox" Style="{StaticResource FieldCheck}"
+                                          AutomationProperties.Name="Start WriteFix with Windows"
+                                          Content="Start with Windows" />
+                                <TextBlock Text="Launches quietly in the tray when you sign in."
+                                           Style="{StaticResource HelpText}" Margin="31,6,0,0" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Border>
 
                 <Border Style="{StaticResource Card}" Margin="0,16,0,0">
                     <StackPanel Margin="20,18,20,20">

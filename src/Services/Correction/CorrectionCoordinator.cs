@@ -17,7 +17,7 @@ namespace WriteFix.Services.Correction;
 public sealed class CorrectionCoordinator
 {
     private readonly TextCaptureService _capture;
-    private readonly ChatCompletionsClient _client;
+    private readonly AiRouter _ai;
     private readonly SettingsStore _settings;
     private readonly Action<string> _notify;
 
@@ -27,23 +27,27 @@ public sealed class CorrectionCoordinator
     /// <summary>The correction currently shown on the card.</summary>
     private string _corrected = "";
 
+    /// <summary>The mode of the request currently shown or in flight.</summary>
+    private CorrectionMode _mode;
+
     public CorrectionCoordinator(
         TextCaptureService capture,
-        ChatCompletionsClient client,
+        AiRouter ai,
         SettingsStore settings,
         Action<string> notify)
     {
         _capture = capture;
-        _client = client;
+        _ai = ai;
         _settings = settings;
         _notify = notify;
     }
 
-    public async void Run()
+    /// <param name="requested">The mode the shortcut or menu asked for; a mode locked in Settings wins over it.</param>
+    public async void Run(CorrectionMode requested)
     {
         try
         {
-            await RunAsync();
+            await RunAsync(requested);
         }
         catch (Exception ex)
         {
@@ -54,12 +58,15 @@ public sealed class CorrectionCoordinator
         }
     }
 
-    private async Task RunAsync()
+    private async Task RunAsync(CorrectionMode requested)
     {
         Dismiss();
 
         var cancellation = new CancellationTokenSource();
         _cancellation = cancellation;
+
+        var lockedMode = _settings.Current.LockedMode;
+        _mode = lockedMode ?? requested;
 
         // Read the caret before our own window can become the foreground window.
         var anchor = CaretLocator.GetAnchorPoint();
@@ -78,11 +85,16 @@ public sealed class CorrectionCoordinator
         _window = window;
 
         window.SetAnchor(anchor.X, anchor.Y);
-        window.ShowWorking(captured.Mode);
+        window.SetModeSwitchVisible(lockedMode is null);
+        window.ShowWorking(captured.Mode, _mode);
 
         window.AcceptRequested += () => OnAccept(captured, window);
         window.CopyRequested += () => OnCopy(window);
-        window.RegenerateRequested += () => OnRegenerate(captured, window);
+        window.RegenerateRequested += () => Rerun(captured, window, _mode);
+        window.ModeSwitchRequested += mode =>
+        {
+            if (mode != _mode) Rerun(captured, window, mode);
+        };
         window.Cancelled += () =>
         {
             AppLog.Info("Correction cancelled by the user.");
@@ -97,7 +109,7 @@ public sealed class CorrectionCoordinator
 
     private async Task RequestCorrectionAsync(CaptureResult captured, ResultWindow window, CancellationToken token)
     {
-        var result = await _client.CorrectAsync(captured.Text, token);
+        var result = await _ai.CorrectAsync(captured.Text, _mode, token);
 
         if (token.IsCancellationRequested || !window.IsLoaded) return;
 
@@ -143,12 +155,14 @@ public sealed class CorrectionCoordinator
         window.CloseQuietly();
     }
 
-    private async void OnRegenerate(CaptureResult captured, ResultWindow window)
+    /// <summary>Asks again for the same captured text: Regenerate keeps the mode, the card's switch changes it.</summary>
+    private async void Rerun(CaptureResult captured, ResultWindow window, CorrectionMode mode)
     {
         var cancellation = _cancellation;
         if (cancellation is null || cancellation.IsCancellationRequested) return;
 
-        window.ShowWorking(captured.Mode);
+        _mode = mode;
+        window.ShowWorking(captured.Mode, mode);
         await RequestCorrectionAsync(captured, window, cancellation.Token);
     }
 

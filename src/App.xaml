@@ -27,6 +27,7 @@
         <SolidColorBrush x:Key="AccentBorder" Color="#F0BCC1" />
         <SolidColorBrush x:Key="AccentHalo" Color="#48C9343F" />
         <SolidColorBrush x:Key="Danger" Color="#B42318" />
+        <SolidColorBrush x:Key="Positive" Color="#1E7A4C" />
         <SolidColorBrush x:Key="HeaderChipBackground" Color="#16FFFFFF" />
         <SolidColorBrush x:Key="HeaderChipBorder" Color="#2FFFFFFF" />
         <SolidColorBrush x:Key="HeaderForeground" Color="#F3ECE8" />
@@ -187,8 +188,10 @@
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="Foreground" Value="{StaticResource Ink}" />
             <Setter Property="CaretBrush" Value="{StaticResource Accent}" />
-            <Setter Property="SelectionBrush" Value="{StaticResource AccentSoft}" />
-            <Setter Property="SelectionOpacity" Value="1" />
+            <!-- WPF paints the selection as a layer over the text, so it must stay
+                 translucent: at opacity 1 it hides the selected words completely. -->
+            <Setter Property="SelectionBrush" Value="{StaticResource Accent}" />
+            <Setter Property="SelectionOpacity" Value="0.35" />
             <Setter Property="SnapsToDevicePixels" Value="True" />
             <Setter Property="Template">
                 <Setter.Value>
@@ -229,7 +232,8 @@
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="Foreground" Value="{StaticResource Ink}" />
             <Setter Property="CaretBrush" Value="{StaticResource Accent}" />
-            <Setter Property="SelectionBrush" Value="{StaticResource AccentSoft}" />
+            <Setter Property="SelectionBrush" Value="{StaticResource Accent}" />
+            <Setter Property="SelectionOpacity" Value="0.35" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="PasswordBox">
@@ -385,7 +389,8 @@
                                      FontSize="{TemplateBinding FontSize}"
                                      Foreground="{TemplateBinding Foreground}"
                                      CaretBrush="{StaticResource Accent}"
-                                     SelectionBrush="{StaticResource AccentSoft}"
+                                     SelectionBrush="{StaticResource Accent}"
+                                     SelectionOpacity="0.35"
                                      IsReadOnly="{TemplateBinding IsReadOnly}"
                                      VerticalContentAlignment="Center" />
                             <Popup x:Name="PART_Popup" AllowsTransparency="True" Focusable="False"
@@ -450,6 +455,58 @@
                             <Trigger Property="IsKeyboardFocused" Value="True">
                                 <Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource Accent}" />
                                 <Setter TargetName="Box" Property="BorderThickness" Value="2" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- One option of a segmented switch: RadioButtons sharing a GroupName inside a SegmentTrack. -->
+        <Style x:Key="SegmentTrack" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource Well}" />
+            <Setter Property="BorderBrush" Value="{StaticResource Border}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Padding" Value="3" />
+            <Setter Property="HorizontalAlignment" Value="Left" />
+        </Style>
+
+        <Style x:Key="SegmentOption" TargetType="RadioButton">
+            <Setter Property="OverridesDefaultStyle" Value="True" />
+            <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{StaticResource InkSoft}" />
+            <Setter Property="Padding" Value="12,6" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="Chrome" Background="Transparent" BorderBrush="Transparent"
+                                BorderThickness="1" CornerRadius="8"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              TextElement.FontFamily="{TemplateBinding FontFamily}"
+                                              TextElement.FontSize="{TemplateBinding FontSize}"
+                                              TextElement.FontWeight="{TemplateBinding FontWeight}"
+                                              TextElement.Foreground="{TemplateBinding Foreground}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Foreground" Value="{StaticResource Ink}" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Chrome" Property="Background" Value="{StaticResource Paper}" />
+                                <Setter TargetName="Chrome" Property="BorderBrush" Value="{StaticResource AccentBorder}" />
+                                <Setter Property="Foreground" Value="{StaticResource HighlightInk}" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Chrome" Property="BorderBrush" Value="{StaticResource Accent}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Chrome" Property="Opacity" Value="0.46" />
+                                <Setter Property="Cursor" Value="Arrow" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>

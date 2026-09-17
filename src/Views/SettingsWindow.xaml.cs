@@ -1,6 +1,6 @@
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
-using System.Windows.Media;
 using WriteFix.Interop;
 using WriteFix.Models;
 using WriteFix.Services.Ai;
@@ -47,35 +47,41 @@ public partial class SettingsWindow : Window
         ]),
     ];
 
+    private const string WaitingForKeysPrompt = "Press a shortcut…";
+    private const string WaitingForKeysStatus = "Waiting for keys. Esc keeps the current shortcut.";
+
     private readonly SettingsStore _settings;
     private readonly SecretStore _secrets;
-    private readonly ChatCompletionsClient _client;
+    private readonly AiRouter _ai;
     private readonly UpdateCoordinator _updates;
 
-    /// <summary>Re-registers the global hotkey; false means another app already owns it.</summary>
-    private readonly Func<HotkeySpec, bool> _applyHotkey;
+    /// <summary>Owns the global hotkeys: suspended while a shortcut is typed, probed for conflicts, re-registered on save.</summary>
+    private readonly AppMessageWindow _hotkeyHost;
 
-    private HotkeySpec _hotkey;
+    /// <summary>The shortcut shown for each mode, which may not be saved yet.</summary>
+    private readonly Dictionary<CorrectionMode, HotkeySpec> _hotkeys;
+
+    private bool _hotkeysSuspended;
     private bool _keyEdited;
     private bool _loading;
 
     public SettingsWindow(
         SettingsStore settings,
         SecretStore secrets,
-        ChatCompletionsClient client,
+        AiRouter ai,
         UpdateCoordinator updates,
-        Func<HotkeySpec, bool> applyHotkey)
+        AppMessageWindow hotkeyHost)
     {
         InitializeComponent();
 
         _settings = settings;
         _secrets = secrets;
-        _client = client;
+        _ai = ai;
         _updates = updates;
-        _applyHotkey = applyHotkey;
+        _hotkeyHost = hotkeyHost;
 
         var current = settings.Current;
-        _hotkey = HotkeySpec.ParseOrDefault(current.Hotkey);
+        _hotkeys = Enum.GetValues<CorrectionMode>().ToDictionary(mode => mode, mode => HotkeySpec.SavedFor(current, mode));
 
         // Setting Text below can select a matching item, which would fire
         // OnProviderChanged and overwrite the saved model with a preset.
@@ -87,13 +93,24 @@ public partial class SettingsWindow : Window
         ModelBox.Text = current.Model;
         _loading = false;
 
+        OpenCodeModelBox.Text = current.OpenCodeModel;
+        ConnectionOpenCodeOption.IsChecked = current.Provider == AiProvider.OpenCode;
+        ConnectionApiOption.IsChecked = current.Provider == AiProvider.ChatCompletions;
+
         PromptBox.Text = current.StyleInstructions;
-        HotkeyBox.Text = _hotkey.ToString();
+        RephrasePromptBox.Text = current.RephraseInstructions;
+        FixHotkeyBox.Text = _hotkeys[CorrectionMode.Fix].ToString();
+        RephraseHotkeyBox.Text = _hotkeys[CorrectionMode.Rephrase].ToString();
+        SelectLockedMode(current.LockedMode);
         StartupBox.IsChecked = StartupRegistry.IsEnabled();
         AutoUpdateBox.IsChecked = current.AutoCheckUpdates;
         VersionText.Text = $"WriteFix {UpdateService.CurrentVersion}";
 
         ApiKeyBox.PasswordChanged += (_, _) => _keyEdited = true;
+
+        // Focus normally leaves the shortcut box before the window closes, but a
+        // suspended hotkey must never outlive the window if it does not.
+        Closed += (_, _) => ResumeHotkeys();
 
         UpdateKeyStatus();
     }
@@ -140,39 +157,17 @@ public partial class SettingsWindow : Window
             : box.VerticalOffset > Slack;
     }
 
-    // ---- Hotkey capture ----------------------------------------------------
+    // ---- Connection --------------------------------------------------------
 
-    private void OnHotkeyKeyDown(object sender, KeyEventArgs e)
+    private AiProvider SelectedConnection() =>
+        ConnectionOpenCodeOption.IsChecked == true ? AiProvider.OpenCode : AiProvider.ChatCompletions;
+
+    private void OnConnectionChanged(object sender, RoutedEventArgs e)
     {
-        e.Handled = true;
-
-        var key = e.Key == Key.System ? e.SystemKey : e.Key;
-
-        // Ignore the modifier keys themselves; wait for the real key.
-        if (key is Key.LeftCtrl or Key.RightCtrl or Key.LeftAlt or Key.RightAlt
-            or Key.LeftShift or Key.RightShift or Key.LWin or Key.RWin)
-        {
-            return;
-        }
-
-        var modifiers = HotkeyModifiers.None;
-        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control)) modifiers |= HotkeyModifiers.Control;
-        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Alt)) modifiers |= HotkeyModifiers.Alt;
-        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift)) modifiers |= HotkeyModifiers.Shift;
-        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Windows)) modifiers |= HotkeyModifiers.Win;
-
-        if (modifiers == HotkeyModifiers.None)
-        {
-            SetFooter("A hotkey needs at least one of Ctrl, Alt, Shift or Win.", isError: true);
-            return;
-        }
-
-        _hotkey = new HotkeySpec(modifiers, key);
-        HotkeyBox.Text = _hotkey.ToString();
-        SetFooter("");
+        var openCode = SelectedConnection() == AiProvider.OpenCode;
+        OpenCodePanel.Visibility = openCode ? Visibility.Visible : Visibility.Collapsed;
+        ApiPanel.Visibility = openCode ? Visibility.Collapsed : Visibility.Visible;
     }
-
-    // ---- Commands ----------------------------------------------------------
 
     /// <summary>
     /// Switching provider makes the current model id meaningless — a Groq id is not a
@@ -205,6 +200,204 @@ public partial class SettingsWindow : Window
         Providers.FirstOrDefault(p =>
             string.Equals(p.BaseUrl, baseUrl?.Trim().TrimEnd('/'), StringComparison.OrdinalIgnoreCase));
 
+    /// <summary>Fills the model list from OpenCode, starting it if needed; the box keeps whatever was typed.</summary>
+    private async void OnLoadOpenCodeModels(object sender, RoutedEventArgs e)
+    {
+        LoadOpenCodeModelsButton.IsEnabled = false;
+        SetFooter("Starting the SDK and loading its models…");
+
+        try
+        {
+            var (models, error) = await _ai.OpenCode.LoadModelsAsync(CancellationToken.None);
+            if (models.Count == 0)
+            {
+                SetFooter(error, isError: true);
+                return;
+            }
+
+            var typed = OpenCodeModelBox.Text;
+            OpenCodeModelBox.Items.Clear();
+            foreach (var model in models) OpenCodeModelBox.Items.Add(model);
+            OpenCodeModelBox.Text = typed;
+
+            SetFooter($"{models.Count} SDK models loaded. Open the list to pick one.");
+        }
+        finally
+        {
+            LoadOpenCodeModelsButton.IsEnabled = true;
+        }
+    }
+
+    private async void OnTestOpenCode(object sender, RoutedEventArgs e)
+    {
+        TestOpenCodeButton.IsEnabled = false;
+        SetFooter("Starting the SDK and checking the model…");
+
+        try
+        {
+            var (ok, message) = await _ai.OpenCode.TestConnectionAsync(OpenCodeModelBox.Text, CancellationToken.None);
+            SetFooter(message, isError: !ok);
+        }
+        finally
+        {
+            TestOpenCodeButton.IsEnabled = true;
+        }
+    }
+
+    // ---- Mode --------------------------------------------------------------
+
+    private void SelectLockedMode(CorrectionMode? lockedMode)
+    {
+        ModeChooseOption.IsChecked = lockedMode is null;
+        ModeFixOption.IsChecked = lockedMode == CorrectionMode.Fix;
+        ModeRephraseOption.IsChecked = lockedMode == CorrectionMode.Rephrase;
+    }
+
+    private CorrectionMode? SelectedLockedMode()
+    {
+        if (ModeFixOption.IsChecked == true) return CorrectionMode.Fix;
+        if (ModeRephraseOption.IsChecked == true) return CorrectionMode.Rephrase;
+        return null;
+    }
+
+    private void OnLockedModeChanged(object sender, RoutedEventArgs e)
+    {
+        ModeHelpText.Text = SelectedLockedMode() switch
+        {
+            CorrectionMode.Fix => "Both shortcuts only fix errors. The card hides its Fix / Rephrase switch.",
+            CorrectionMode.Rephrase => "Both shortcuts rephrase. The card hides its Fix / Rephrase switch.",
+            _ => "The Fix shortcut starts in Fix, the Rephrase shortcut in Rephrase, and the card lets you switch.",
+        };
+    }
+
+    // ---- Hotkey capture ----------------------------------------------------
+
+    private CorrectionMode ModeOf(object hotkeyBox) =>
+        hotkeyBox == RephraseHotkeyBox ? CorrectionMode.Rephrase : CorrectionMode.Fix;
+
+    private TextBlock StatusFor(CorrectionMode mode) =>
+        mode == CorrectionMode.Rephrase ? RephraseHotkeyStatus : FixHotkeyStatus;
+
+    /// <summary>
+    /// While a shortcut box has focus every WriteFix hotkey is released, so pressing
+    /// the current combination records it instead of starting a correction.
+    /// </summary>
+    private void OnHotkeyGotFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        SuspendHotkeys();
+
+        ((TextBox)sender).Text = WaitingForKeysPrompt;
+        SetHotkeyStatus(ModeOf(sender), WaitingForKeysStatus, "InkSoft");
+    }
+
+    private void OnHotkeyLostFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        var mode = ModeOf(sender);
+        ((TextBox)sender).Text = _hotkeys[mode].ToString();
+
+        if (StatusFor(mode).Text == WaitingForKeysStatus) SetHotkeyStatus(mode, "", "InkSoft");
+
+        ResumeHotkeys();
+    }
+
+    private void OnHotkeyKeyDown(object sender, KeyEventArgs e)
+    {
+        var key = e.Key == Key.System ? e.SystemKey : e.Key;
+        var shiftOrNothing = (Keyboard.Modifiers & ~ModifierKeys.Shift) == ModifierKeys.None;
+
+        // Tab and Shift+Tab still move between fields.
+        if (key == Key.Tab && shiftOrNothing) return;
+
+        e.Handled = true;
+
+        if (key == Key.Escape && Keyboard.Modifiers == ModifierKeys.None)
+        {
+            Keyboard.ClearFocus();
+            return;
+        }
+
+        // Ignore the modifier keys themselves; wait for the real key.
+        if (key is Key.LeftCtrl or Key.RightCtrl or Key.LeftAlt or Key.RightAlt
+            or Key.LeftShift or Key.RightShift or Key.LWin or Key.RWin)
+        {
+            return;
+        }
+
+        var mode = ModeOf(sender);
+
+        // Shift alone would steal a capital letter from every app.
+        if (shiftOrNothing)
+        {
+            SetHotkeyStatus(mode, "Add Ctrl, Alt or Win to the combination.", "Danger");
+            return;
+        }
+
+        _hotkeys[mode] = new HotkeySpec(ReadModifiers(), key);
+        ((TextBox)sender).Text = _hotkeys[mode].ToString();
+        CheckHotkey(mode);
+    }
+
+    private static HotkeyModifiers ReadModifiers()
+    {
+        var modifiers = HotkeyModifiers.None;
+        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control)) modifiers |= HotkeyModifiers.Control;
+        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Alt)) modifiers |= HotkeyModifiers.Alt;
+        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift)) modifiers |= HotkeyModifiers.Shift;
+        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Windows)) modifiers |= HotkeyModifiers.Win;
+        return modifiers;
+    }
+
+    /// <summary>Tests the shortcut shown for <paramref name="mode"/>, shows the verdict under its box, and returns whether it can be saved.</summary>
+    private bool CheckHotkey(CorrectionMode mode)
+    {
+        var spec = _hotkeys[mode];
+        var otherMode = mode == CorrectionMode.Fix ? CorrectionMode.Rephrase : CorrectionMode.Fix;
+
+        if (spec == _hotkeys[otherMode])
+        {
+            SetHotkeyStatus(mode, $"{spec} is already your {otherMode} shortcut.", "Danger");
+            return false;
+        }
+
+        if (!_hotkeyHost.IsHotkeyAvailable(spec))
+        {
+            SetHotkeyStatus(mode, $"{spec} is taken by another app or by Windows. Try another one.", "Danger");
+            return false;
+        }
+
+        var message = spec == HotkeySpec.SavedFor(_settings.Current, mode)
+            ? $"{spec} is your current shortcut and works."
+            : $"{spec} is free. Save changes to use it.";
+
+        SetHotkeyStatus(mode, message, "Positive");
+        return true;
+    }
+
+    private void SuspendHotkeys()
+    {
+        _hotkeyHost.UnregisterHotkeys();
+        _hotkeysSuspended = true;
+    }
+
+    private void ResumeHotkeys()
+    {
+        if (!_hotkeysSuspended) return;
+        _hotkeysSuspended = false;
+
+        var taken = _hotkeyHost.RegisterSavedHotkeys(_settings.Current);
+        if (taken.Count > 0)
+            SetFooter($"{string.Join(" and ", taken)} could not be registered again. Pick a different shortcut.", isError: true);
+    }
+
+    private void SetHotkeyStatus(CorrectionMode mode, string message, string brushKey)
+    {
+        var status = StatusFor(mode);
+        status.Text = message;
+        status.Foreground = (Brush)FindResource(brushKey);
+    }
+
+    // ---- Commands ----------------------------------------------------------
+
     private async void OnTestConnection(object sender, RoutedEventArgs e)
     {
         // Test what is typed if anything was typed, otherwise what is already stored.
@@ -221,7 +414,7 @@ public partial class SettingsWindow : Window
 
         try
         {
-            var (ok, message) = await _client.TestConnectionAsync(
+            var (ok, message) = await _ai.ChatCompletions.TestConnectionAsync(
                 ProviderBox.Text.Trim(), key, ModelBox.Text.Trim(), CancellationToken.None);
             SetFooter(message, isError: !ok);
         }
@@ -268,7 +461,13 @@ public partial class SettingsWindow : Window
     private void OnResetPrompt(object sender, RoutedEventArgs e)
     {
         PromptBox.Text = AppSettings.DefaultStyleInstructions;
-        SetFooter("Correction style reset to the default.");
+        SetFooter("Fix instructions reset to the default.");
+    }
+
+    private void OnResetRephrasePrompt(object sender, RoutedEventArgs e)
+    {
+        RephrasePromptBox.Text = AppSettings.DefaultRephraseInstructions;
+        SetFooter("Rephrase instructions reset to the default.");
     }
 
     /// <summary>Shows exactly what will be sent, so the fixed half is inspectable even though it is not editable.</summary>
@@ -276,11 +475,25 @@ public partial class SettingsWindow : Window
     {
         var preview = _settings.Current.Clone();
         preview.StyleInstructions = PromptBox.Text;
-        PromptPreview.Text = preview.BuildSystemPrompt();
+        preview.RephraseInstructions = RephrasePromptBox.Text;
+
+        PromptPreview.Text =
+            $"FIX\n\n{preview.BuildSystemPrompt(CorrectionMode.Fix)}\n\n\n" +
+            $"REPHRASE\n\n{preview.BuildSystemPrompt(CorrectionMode.Rephrase)}";
     }
 
     private void OnSave(object sender, RoutedEventArgs e)
     {
+        // Check both before refusing, so each box shows its own verdict.
+        var hotkeysValid = true;
+        foreach (var mode in _hotkeys.Keys) hotkeysValid &= CheckHotkey(mode);
+
+        if (!hotkeysValid)
+        {
+            SetFooter("Nothing saved yet: choose a different shortcut first.", isError: true);
+            return;
+        }
+
         if (_keyEdited && ApiKeyBox.Password.Length > 0)
         {
             _secrets.Write(ApiKeyBox.Password);
@@ -289,10 +502,15 @@ public partial class SettingsWindow : Window
         }
 
         var updated = _settings.Current.Clone();
+        updated.Provider = SelectedConnection();
         updated.ApiBaseUrl = ProviderBox.Text.Trim();
         updated.Model = string.IsNullOrWhiteSpace(ModelBox.Text) ? AppSettings.DefaultModel : ModelBox.Text.Trim();
+        updated.OpenCodeModel = OpenCodeModelBox.Text.Trim();
         updated.StyleInstructions = PromptBox.Text;
-        updated.Hotkey = _hotkey.ToString();
+        updated.RephraseInstructions = RephrasePromptBox.Text;
+        updated.LockedMode = SelectedLockedMode();
+        updated.Hotkey = _hotkeys[CorrectionMode.Fix].ToString();
+        updated.RephraseHotkey = _hotkeys[CorrectionMode.Rephrase].ToString();
         updated.StartWithWindows = StartupBox.IsChecked == true;
         updated.AutoCheckUpdates = AutoUpdateBox.IsChecked == true;
         updated.HasApiKey = _secrets.HasKey;
@@ -300,12 +518,12 @@ public partial class SettingsWindow : Window
         StartupRegistry.Set(updated.StartWithWindows);
         _settings.Save(updated);
 
-        var registered = _applyHotkey(_hotkey);
+        var taken = _hotkeyHost.RegisterSavedHotkeys(updated);
 
         UpdateKeyStatus();
         SetFooter(
-            registered ? "Saved." : $"Saved, but {_hotkey} is already taken by another app. Pick a different one.",
-            isError: !registered);
+            taken.Count == 0 ? "Saved." : $"Saved, but {string.Join(" and ", taken)} could not be registered. Pick a different one.",
+            isError: taken.Count > 0);
     }
 
     private void OnRunInBackground(object sender, RoutedEventArgs e) => Close();

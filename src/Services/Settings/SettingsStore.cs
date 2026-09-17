@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using WriteFix.Models;
 using WriteFix.Services.Logging;
 using WriteFix.Services.Platform;
@@ -13,6 +14,8 @@ public sealed class SettingsStore
     {
         WriteIndented = true,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        // Enums as names, so settings.json stays readable and hand-editable.
+        Converters = { new JsonStringEnumConverter() },
     };
 
     public AppSettings Current { get; private set; } = new();
@@ -52,8 +55,9 @@ public sealed class SettingsStore
         File.WriteAllText(AppPaths.SettingsFile, JsonSerializer.Serialize(settings, Json));
         Current = settings;
 
-        AppLog.Info($"Settings saved. baseUrl={settings.ApiBaseUrl} model={settings.Model} " +
-                    $"hotkey={settings.Hotkey} startWithWindows={settings.StartWithWindows} " +
+        AppLog.Info($"Settings saved. provider={settings.Provider} baseUrl={settings.ApiBaseUrl} model={settings.Model} " +
+                    $"openCodeModel={settings.OpenCodeModel} hotkey={settings.Hotkey} rephraseHotkey={settings.RephraseHotkey} " +
+                    $"lockedMode={settings.LockedMode?.ToString() ?? "none"} startWithWindows={settings.StartWithWindows} " +
                     $"hasKey={settings.HasApiKey}");
         Changed?.Invoke(settings);
     }

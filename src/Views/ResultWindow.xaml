@@ -60,14 +60,33 @@
                     </StackPanel>
                 </StackPanel>
 
-                <Border x:Name="ModeChip"
-                        HorizontalAlignment="Right" VerticalAlignment="Center"
-                        Background="{StaticResource AccentSoft}"
-                        BorderBrush="{StaticResource AccentBorder}" BorderThickness="1"
-                        CornerRadius="10" Padding="9,4">
-                    <TextBlock x:Name="ModeChipText" FontSize="10.5" FontWeight="SemiBold"
-                               Foreground="{StaticResource HighlightInk}" />
-                </Border>
+                <StackPanel Orientation="Horizontal"
+                            HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <!-- Hidden when Settings locks every correction to one mode. -->
+                    <Border x:Name="ModeSwitch" Style="{StaticResource SegmentTrack}"
+                            VerticalAlignment="Center" Margin="0,0,8,0" Padding="2">
+                        <StackPanel Orientation="Horizontal">
+                            <RadioButton x:Name="FixOption" GroupName="CardMode" Content="Fix"
+                                         Style="{StaticResource SegmentOption}"
+                                         FontSize="11" Padding="10,3"
+                                         AutomationProperties.Name="Fix errors only"
+                                         Click="OnModeOptionClick" />
+                            <RadioButton x:Name="RephraseOption" GroupName="CardMode" Content="Rephrase"
+                                         Style="{StaticResource SegmentOption}"
+                                         FontSize="11" Padding="10,3"
+                                         AutomationProperties.Name="Rephrase the text"
+                                         Click="OnModeOptionClick" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border x:Name="ModeChip" VerticalAlignment="Center"
+                            Background="{StaticResource AccentSoft}"
+                            BorderBrush="{StaticResource AccentBorder}" BorderThickness="1"
+                            CornerRadius="10" Padding="9,4">
+                        <TextBlock x:Name="ModeChipText" FontSize="10.5" FontWeight="SemiBold"
+                                   Foreground="{StaticResource HighlightInk}" />
+                    </Border>
+                </StackPanel>
             </Grid>
 
             <!-- Body: exactly one state is visible at a time. -->
@@ -84,9 +103,9 @@
                                      Effect="{StaticResource SignalGlow}" />
                         </Grid>
                         <StackPanel Margin="11,0,0,0" VerticalAlignment="Center">
-                            <TextBlock Text="Refining your writing…"
+                            <TextBlock x:Name="WorkingTitle"
                                        FontSize="13" FontWeight="SemiBold" />
-                            <TextBlock Text="Keeping your meaning, improving the delivery."
+                            <TextBlock x:Name="WorkingSubtitle"
                                        FontSize="10.5" Foreground="{StaticResource InkSoft}"
                                        Margin="0,2,0,0" />
                         </StackPanel>

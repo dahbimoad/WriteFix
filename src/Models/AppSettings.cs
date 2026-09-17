@@ -26,7 +26,11 @@ public sealed class AppSettings
     /// </summary>
     public const string DefaultModel = "openai/gpt-oss-120b";
 
+    /// <summary>OpenCode Zen's free default; it answered EN and FR correctly in testing on 2026-09-16.</summary>
+    public const string DefaultOpenCodeModel = "opencode/big-pickle";
+
     public const string DefaultHotkey = "Ctrl+Alt+F";
+    public const string DefaultRephraseHotkey = "Ctrl+Alt+R";
 
     /// <summary>
     /// The non-negotiable half of the system prompt, fixed in code and never shown
@@ -71,6 +75,43 @@ public sealed class AppSettings
         """;
 
     /// <summary>
+    /// The fixed task of Rephrase mode. It hands the user's rephrase instructions
+    /// the highest authority short of the contract itself, because following them
+    /// exactly is the whole point of the mode.
+    /// </summary>
+    private const string RephraseTask =
+        """
+        Rephrase the text so it reads better, and fix every spelling, grammar,
+        punctuation and accent error while doing it. You may change wording, sentence
+        structure and order.
+
+        The user's instructions below are mandatory. Apply every one of them, exactly
+        and completely, to your rewrite. They take priority over your own judgement
+        about style, tone, length and structure. Only the rules above (rewrite rather
+        than answer, keep the same language) and the output rule at the end outrank them.
+        """;
+
+    /// <summary>The half the user owns for Rephrase mode.</summary>
+    public const string DefaultRephraseInstructions =
+        """
+        - Rewrite it so it reads clear, fluent, professional and natural.
+        - Keep the original meaning and intent.
+        - Do not invent facts, names, numbers, promises, greetings or sign-offs that
+          were not already there.
+        - Keep technical terms, product names, URLs and code exactly as written.
+        """;
+
+    /// <summary>
+    /// Whether corrections go to the API at <see cref="ApiBaseUrl"/> or to OpenCode.
+    /// A settings.json written before this existed has no value, which reads as
+    /// <see cref="AiProvider.ChatCompletions"/> — exactly what that install was using.
+    /// </summary>
+    public AiProvider Provider { get; set; } = AiProvider.ChatCompletions;
+
+    /// <summary>OpenCode model as <c>providerID/modelID</c>, e.g. <c>opencode/big-pickle</c>.</summary>
+    public string OpenCodeModel { get; set; } = DefaultOpenCodeModel;
+
+    /// <summary>
     /// Base URL of an OpenAI-compatible API, without a trailing slash and without
     /// <c>/chat/completions</c>.
     ///
@@ -94,7 +135,21 @@ public sealed class AppSettings
     /// </summary>
     public string StyleInstructions { get; set; } = DefaultStyleInstructions;
 
+    /// <summary>User-authored rules Rephrase mode must follow. May be empty.</summary>
+    public string RephraseInstructions { get; set; } = DefaultRephraseInstructions;
+
+    /// <summary>Shortcut that runs Fix mode.</summary>
     public string Hotkey { get; set; } = DefaultHotkey;
+
+    /// <summary>Shortcut that runs Rephrase mode.</summary>
+    public string RephraseHotkey { get; set; } = DefaultRephraseHotkey;
+
+    /// <summary>
+    /// A mode forced for every correction, whichever shortcut started it; the card
+    /// then hides its mode switch. Null lets the shortcut pick the mode and the card
+    /// switch between them.
+    /// </summary>
+    public CorrectionMode? LockedMode { get; set; }
 
     public bool StartWithWindows { get; set; }
 
@@ -122,15 +177,20 @@ public sealed class AppSettings
     /// <summary>Guard against pasting a novel into a chat box (see OPEN-QUESTIONS Q6).</summary>
     public int MaxInputCharacters { get; set; } = 8000;
 
-    /// <summary>Assembles the full system message actually sent to the model.</summary>
-    public string BuildSystemPrompt()
+    /// <summary>Assembles the full system message actually sent to the model for <paramref name="mode"/>.</summary>
+    public string BuildSystemPrompt(CorrectionMode mode)
     {
         var builder = new StringBuilder(PromptHeader);
 
-        if (!string.IsNullOrWhiteSpace(StyleInstructions))
+        if (mode == CorrectionMode.Rephrase)
         {
-            builder.Append("\n\nHow to correct it:\n");
-            builder.Append(StyleInstructions.Trim());
+            builder.Append("\n\n");
+            builder.Append(RephraseTask);
+            AppendInstructions(builder, "Instructions you must follow:", RephraseInstructions);
+        }
+        else
+        {
+            AppendInstructions(builder, "How to correct it:", StyleInstructions);
         }
 
         builder.Append("\n\n");
@@ -138,6 +198,16 @@ public sealed class AppSettings
 
         return builder.ToString();
     }
+
+    private static void AppendInstructions(StringBuilder builder, string heading, string instructions)
+    {
+        if (string.IsNullOrWhiteSpace(instructions)) return;
+
+        builder.Append("\n\n").Append(heading).Append('\n');
+        builder.Append(instructions.Trim());
+    }
+
+    public string HotkeyFor(CorrectionMode mode) => mode == CorrectionMode.Rephrase ? RephraseHotkey : Hotkey;
 
     /// <summary>
     /// Called only for a settings.json that already existed on disk. Such a file
@@ -157,14 +227,19 @@ public sealed class AppSettings
     {
         if (string.IsNullOrWhiteSpace(Model)) Model = DefaultModel;
         if (string.IsNullOrWhiteSpace(Hotkey)) Hotkey = DefaultHotkey;
+        if (string.IsNullOrWhiteSpace(RephraseHotkey)) RephraseHotkey = DefaultRephraseHotkey;
+        if (string.IsNullOrWhiteSpace(OpenCodeModel)) OpenCodeModel = DefaultOpenCodeModel;
+        if (!Enum.IsDefined(Provider)) Provider = AiProvider.ChatCompletions;
+        if (LockedMode is { } locked && !Enum.IsDefined(locked)) LockedMode = null;
 
         // Reached by a fresh install, or by a user who cleared the box.
         if (string.IsNullOrWhiteSpace(ApiBaseUrl)) ApiBaseUrl = DefaultBaseUrl;
         ApiBaseUrl = ApiBaseUrl.Trim().TrimEnd('/');
 
-        // StyleInstructions is deliberately not defaulted here: an empty box is a
+        // Instructions are deliberately not defaulted here: an empty box is a
         // legitimate choice, and the header/footer keep the prompt valid regardless.
         StyleInstructions ??= "";
+        RephraseInstructions ??= "";
         SkippedVersion ??= "";
 
         RequestTimeoutSeconds = Math.Clamp(RequestTimeoutSeconds, 10, 300);

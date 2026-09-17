@@ -1,4 +1,5 @@
 using System.Windows.Input;
+using WriteFix.Models;
 
 namespace WriteFix.Interop;
 
@@ -9,6 +10,16 @@ public sealed record HotkeySpec(HotkeyModifiers Modifiers, Key Key)
 
     public static HotkeySpec Default { get; } =
         new(HotkeyModifiers.Control | HotkeyModifiers.Alt, Key.F);
+
+    public static HotkeySpec DefaultRephrase { get; } =
+        new(HotkeyModifiers.Control | HotkeyModifiers.Alt, Key.R);
+
+    public static HotkeySpec DefaultFor(CorrectionMode mode) =>
+        mode == CorrectionMode.Rephrase ? DefaultRephrase : Default;
+
+    /// <summary>The shortcut saved for <paramref name="mode"/>, or that mode's default if the saved text is unusable.</summary>
+    public static HotkeySpec SavedFor(AppSettings settings, CorrectionMode mode) =>
+        TryParse(settings.HotkeyFor(mode), out var spec) ? spec : DefaultFor(mode);
 
     public static bool TryParse(string? text, out HotkeySpec spec)
     {
@@ -47,9 +58,6 @@ public sealed record HotkeySpec(HotkeyModifiers Modifiers, Key Key)
         spec = new HotkeySpec(modifiers, key.Value);
         return true;
     }
-
-    public static HotkeySpec ParseOrDefault(string? text) =>
-        TryParse(text, out var spec) ? spec : Default;
 
     public override string ToString()
     {

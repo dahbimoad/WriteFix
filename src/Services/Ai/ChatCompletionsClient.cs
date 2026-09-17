@@ -35,7 +35,7 @@ public sealed class ChatCompletionsClient : IDisposable
         _http.Timeout = Timeout.InfiniteTimeSpan; // per-request CTS controls this instead
     }
 
-    public async Task<CorrectionResult> CorrectAsync(string text, CancellationToken cancellationToken)
+    public async Task<CorrectionResult> CorrectAsync(string text, CorrectionMode mode, CancellationToken cancellationToken)
     {
         var settings = _settings.Current;
 
@@ -43,7 +43,7 @@ public sealed class ChatCompletionsClient : IDisposable
         if (string.IsNullOrWhiteSpace(apiKey))
             return CorrectionResult.Error("No API key yet. Open Settings to add one.");
 
-        var body = BuildRequestBody(settings, text);
+        var body = BuildRequestBody(settings.Model, settings.BuildSystemPrompt(mode), text);
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(settings.RequestTimeoutSeconds));
@@ -62,7 +62,7 @@ public sealed class ChatCompletionsClient : IDisposable
             var payload = await response.Content.ReadAsStringAsync(timeout.Token).ConfigureAwait(false);
 
             AppLog.Info($"Correction request finished. status={(int)response.StatusCode} " +
-                        $"ms={stopwatch.ElapsedMilliseconds} model={settings.Model}");
+                        $"ms={stopwatch.ElapsedMilliseconds} model={settings.Model} mode={mode}");
 
             return response.IsSuccessStatusCode
                 ? ParseCompletion(payload)
@@ -168,21 +168,21 @@ public sealed class ChatCompletionsClient : IDisposable
         return Encoding.UTF8.GetString(stream.ToArray());
     }
 
-    private static string BuildRequestBody(AppSettings settings, string text)
+    private static string BuildRequestBody(string model, string systemPrompt, string text)
     {
         using var stream = new MemoryStream();
         using (var writer = new Utf8JsonWriter(stream))
         {
             writer.WriteStartObject();
-            writer.WriteString("model", settings.Model);
+            writer.WriteString("model", model);
             writer.WriteBoolean("stream", false);
 
             writer.WriteStartArray("messages");
 
             writer.WriteStartObject();
             writer.WriteString("role", "system");
-            // Fixed contract + the user's style rules, composed by AppSettings.
-            writer.WriteString("content", settings.BuildSystemPrompt());
+            // Fixed contract + the user's instructions for this mode, composed by AppSettings.
+            writer.WriteString("content", systemPrompt);
             writer.WriteEndObject();
 
             writer.WriteStartObject();
@@ -216,7 +216,7 @@ public sealed class ChatCompletionsClient : IDisposable
             }
 
             var content = choices[0].GetProperty("message").GetProperty("content").GetString() ?? "";
-            var cleaned = CleanModelOutput(content);
+            var cleaned = ModelOutput.Clean(content);
 
             return string.IsNullOrWhiteSpace(cleaned)
                 ? CorrectionResult.Error("The AI returned nothing. Try Regenerate.")
@@ -227,44 +227,6 @@ public sealed class ChatCompletionsClient : IDisposable
             AppLog.Error("Response body could not be parsed.", ex);
             return CorrectionResult.Error("The AI sent a response WriteFix could not read.");
         }
-    }
-
-    /// <summary>
-    /// Models sometimes wrap the answer in a markdown fence despite being told not
-    /// to. Unwrapping is safe; anything else is left exactly as the model wrote it.
-    /// </summary>
-    private static string CleanModelOutput(string content)
-    {
-        var text = StripReasoning(content).Trim();
-        if (!text.StartsWith("```", StringComparison.Ordinal)) return text;
-
-        var firstBreak = text.IndexOf('\n');
-        if (firstBreak < 0) return text;
-
-        var closing = text.LastIndexOf("```", StringComparison.Ordinal);
-        if (closing <= firstBreak) return text;
-
-        return text[(firstBreak + 1)..closing].Trim();
-    }
-
-    /// <summary>
-    /// Drops a leading <c>&lt;think&gt;…&lt;/think&gt;</c> block. Well-behaved reasoning
-    /// models return their scratchpad in a separate <c>message.reasoning</c> field,
-    /// which this client never reads — but some (Qwen among them) inline it into the
-    /// answer instead, which would otherwise be pasted straight into the user's text
-    /// box. Only a block at the very start is removed, and only when it is closed, so
-    /// a message that legitimately talks about a &lt;think&gt; tag survives intact.
-    /// </summary>
-    private static string StripReasoning(string content)
-    {
-        const string Open = "<think>";
-        const string Close = "</think>";
-
-        var text = content.TrimStart();
-        if (!text.StartsWith(Open, StringComparison.OrdinalIgnoreCase)) return content;
-
-        var close = text.IndexOf(Close, StringComparison.OrdinalIgnoreCase);
-        return close < 0 ? content : text[(close + Close.Length)..];
     }
 
     private static string DescribeHttpFailure(HttpStatusCode status, string payload, AppSettings settings)
