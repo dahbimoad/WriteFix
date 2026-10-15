@@ -22,10 +22,18 @@ public static class AppLog
 
     public static void Error(string message, Exception? ex = null)
     {
-        // Type and stack only. An exception Message can contain a URL, a file path,
-        // or echoed content, so it is not written.
-        var detail = ex is null ? message : $"{message} | {ex.GetType().FullName} | {FirstFrames(ex)}";
+        // Type, HResult and stack only. An exception Message can contain a URL, a file
+        // path, or echoed content, so it is not written.
+        var detail = ex is null ? message : $"{message} | {Describe(ex)} | {FirstFrames(ex)}";
         Write("ERR", detail);
+    }
+
+    private static string Describe(Exception ex)
+    {
+        var detail = $"{ex.GetType().FullName} hresult=0x{ex.HResult:X8}";
+        return ex.InnerException is null
+            ? detail
+            : $"{detail} inner={ex.InnerException.GetType().FullName} innerHresult=0x{ex.InnerException.HResult:X8}";
     }
 
     private static void Write(string level, string message)
@@ -36,7 +44,7 @@ public static class AppLog
             {
                 AppPaths.EnsureCreated();
                 Rotate();
-                var line = $"{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss.fff zzz} [{level}] {Sanitize(message)}{Environment.NewLine}";
+                var line = $"{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss.fff zzz} [{level}] [T{Environment.CurrentManagedThreadId}] {Sanitize(message)}{Environment.NewLine}";
                 File.AppendAllText(AppPaths.LogFile, line, Encoding.UTF8);
             }
         }

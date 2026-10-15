@@ -41,7 +41,13 @@ public sealed class ChatCompletionsClient : IDisposable
 
         var apiKey = _secrets.Read();
         if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            AppLog.Warn("Correction refused: no API key is stored.");
             return CorrectionResult.Error("No API key yet. Open Settings to add one.");
+        }
+
+        AppLog.Info($"Correction request sending. baseUrl={settings.ApiBaseUrl} model={settings.Model} mode={mode} " +
+                    $"chars={text.Length} timeoutS={settings.RequestTimeoutSeconds}");
 
         var body = BuildRequestBody(settings.Model, settings.BuildSystemPrompt(mode), text);
 
@@ -71,6 +77,7 @@ public sealed class ChatCompletionsClient : IDisposable
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             // The user cancelled or pressed the hotkey again; not an error.
+            AppLog.Info($"Correction request cancelled. ms={stopwatch.ElapsedMilliseconds}");
             return CorrectionResult.Error("Cancelled.");
         }
         catch (OperationCanceledException)
@@ -106,9 +113,19 @@ public sealed class ChatCompletionsClient : IDisposable
         string model,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(apiKey)) return (false, "Enter an API key first.");
-        if (string.IsNullOrWhiteSpace(baseUrl)) return (false, "Enter an API base URL first.");
-        if (string.IsNullOrWhiteSpace(model)) return (false, "Enter a model first.");
+        var missing =
+            string.IsNullOrWhiteSpace(apiKey) ? "Enter an API key first." :
+            string.IsNullOrWhiteSpace(baseUrl) ? "Enter an API base URL first." :
+            string.IsNullOrWhiteSpace(model) ? "Enter a model first." :
+            null;
+
+        if (missing is not null)
+        {
+            AppLog.Info($"Test connection refused: {missing}");
+            return (false, missing);
+        }
+
+        AppLog.Info($"Test connection sending. baseUrl={baseUrl} model={model}");
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(20));
@@ -133,6 +150,7 @@ public sealed class ChatCompletionsClient : IDisposable
         }
         catch (OperationCanceledException)
         {
+            AppLog.Warn("Test connection timed out after 20s.");
             return (false, "The check timed out.");
         }
         catch (HttpRequestException ex)
@@ -206,17 +224,28 @@ public sealed class ChatCompletionsClient : IDisposable
 
             // Providers can return an error object inside a 200 response.
             if (root.TryGetProperty("error", out var error))
+            {
+                AppLog.Warn("Completion carried an error object inside a success response.");
                 return CorrectionResult.Error(DescribeErrorObject(error));
+            }
 
             if (!root.TryGetProperty("choices", out var choices) ||
                 choices.ValueKind != JsonValueKind.Array ||
                 choices.GetArrayLength() == 0)
             {
+                AppLog.Warn("Completion had no choices.");
                 return CorrectionResult.Error("The AI returned an empty response. Try Regenerate.");
             }
 
-            var content = choices[0].GetProperty("message").GetProperty("content").GetString() ?? "";
+            var choice = choices[0];
+            var finishReason = choice.TryGetProperty("finish_reason", out var reason) && reason.ValueKind == JsonValueKind.String
+                ? reason.GetString()
+                : "none";
+            var content = choice.GetProperty("message").GetProperty("content").GetString() ?? "";
             var cleaned = ModelOutput.Clean(content);
+
+            AppLog.Info($"Completion parsed. choices={choices.GetArrayLength()} finishReason={finishReason} " +
+                        $"rawChars={content.Length} cleanedChars={cleaned.Length}");
 
             return string.IsNullOrWhiteSpace(cleaned)
                 ? CorrectionResult.Error("The AI returned nothing. Try Regenerate.")
@@ -261,7 +290,10 @@ public sealed class ChatCompletionsClient : IDisposable
     /// </summary>
     private static string DescribeRateLimit(string payload, AppSettings settings)
     {
-        if (IsUpstreamPoolExhausted(payload))
+        var poolExhausted = IsUpstreamPoolExhausted(payload);
+        AppLog.Warn($"Rate limited. upstreamPoolExhausted={poolExhausted} model={settings.Model}");
+
+        if (poolExhausted)
         {
             return $"\"{settings.Model}\" has no shared upstream capacity right now. " +
                    "This is not your API key — pick a different model in Settings.";
@@ -290,8 +322,9 @@ public sealed class ChatCompletionsClient : IDisposable
                 && source.ValueKind == JsonValueKind.String
                 && source.GetString() is "upstream_provider_shared_pool";
         }
-        catch
+        catch (Exception ex)
         {
+            AppLog.Warn($"Rate-limit body unreadable. type={ex.GetType().Name}");
             return false;
         }
     }
@@ -309,8 +342,9 @@ public sealed class ChatCompletionsClient : IDisposable
                 ? DescribeErrorObject(error)
                 : "";
         }
-        catch
+        catch (Exception ex)
         {
+            AppLog.Warn($"Failure body is not readable JSON. type={ex.GetType().Name}");
             return "";
         }
     }

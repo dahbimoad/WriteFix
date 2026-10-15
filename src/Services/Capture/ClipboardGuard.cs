@@ -27,12 +27,17 @@ public static class ClipboardGuard
         return Retry(() =>
         {
             var source = Clipboard.GetDataObject();
-            if (source is null) return null;
+            if (source is null)
+            {
+                AppLog.Info("Clipboard snapshot: clipboard is empty.");
+                return null;
+            }
 
             var copy = new DataObject();
+            var formats = source.GetFormats(autoConvert: false);
             var kept = 0;
 
-            foreach (var format in source.GetFormats(autoConvert: false))
+            foreach (var format in formats)
             {
                 try
                 {
@@ -41,13 +46,15 @@ public static class ClipboardGuard
                     copy.SetData(format, data);
                     kept++;
                 }
-                catch
+                catch (Exception ex)
                 {
                     // Some formats (delayed-render, cross-process handles) simply
                     // cannot be read. Losing one is better than failing the capture.
+                    AppLog.Warn($"Clipboard snapshot skipped an unreadable format. format={format} type={ex.GetType().Name}");
                 }
             }
 
+            AppLog.Info($"Clipboard snapshot taken. formats={formats.Length} kept={kept}");
             return kept > 0 ? copy : null;
         }, nameof(Snapshot));
     }
@@ -61,6 +68,7 @@ public static class ClipboardGuard
             else
                 Clipboard.SetDataObject(snapshot, copy: true);
 
+            AppLog.Info($"Clipboard restored. hadSnapshot={snapshot is not null}");
             return null;
         }, nameof(Restore));
     }
@@ -73,6 +81,7 @@ public static class ClipboardGuard
             var data = new DataObject();
             data.SetData(DataFormats.UnicodeText, text);
             Clipboard.SetDataObject(data, copy: true);
+            AppLog.Info($"Clipboard text set. chars={text.Length}");
             return null;
         }, nameof(SetText));
     }
@@ -80,6 +89,7 @@ public static class ClipboardGuard
     public static void Clear() => Retry<object?>(() =>
     {
         Clipboard.Clear();
+        AppLog.Info("Clipboard cleared.");
         return null;
     }, nameof(Clear));
 
@@ -89,13 +99,20 @@ public static class ClipboardGuard
         return Retry(() =>
         {
             var data = Clipboard.GetDataObject();
-            if (data is null) return ("", false);
+            if (data is null)
+            {
+                AppLog.Info("Clipboard read: no data object.");
+                return ("", false);
+            }
 
-            var text = data.GetDataPresent(DataFormats.UnicodeText)
+            var hasText = data.GetDataPresent(DataFormats.UnicodeText);
+            var text = hasText
                 ? data.GetData(DataFormats.UnicodeText) as string ?? ""
                 : "";
 
-            return (text, LooksRich(data, text));
+            var isRich = LooksRich(data, text);
+            AppLog.Info($"Clipboard read. hasText={hasText} chars={text.Length} rich={isRich}");
+            return (text, isRich);
         }, nameof(ReadText));
     }
 
@@ -110,9 +127,17 @@ public static class ClipboardGuard
         {
             try
             {
-                if (data.GetData(DataFormats.Rtf) is string rtf && HasRtfStructure(rtf)) return true;
+                if (data.GetData(DataFormats.Rtf) is string rtf && HasRtfStructure(rtf))
+                {
+                    AppLog.Info("Clipboard content is rich: RTF carries structure.");
+                    return true;
+                }
             }
-            catch { /* unreadable flavour, fall through to the HTML check */ }
+            catch (Exception ex)
+            {
+                // Unreadable flavour, fall through to the HTML check.
+                AppLog.Warn($"Clipboard RTF flavour unreadable. type={ex.GetType().Name}");
+            }
         }
 
         if (!data.GetDataPresent(DataFormats.Html)) return false;
@@ -120,10 +145,14 @@ public static class ClipboardGuard
         try
         {
             if (data.GetData(DataFormats.Html) is not string html) return false;
-            return HasHtmlStructure(html, plainText);
+
+            var structured = HasHtmlStructure(html, plainText);
+            if (structured) AppLog.Info("Clipboard content is rich: HTML carries structure.");
+            return structured;
         }
-        catch
+        catch (Exception ex)
         {
+            AppLog.Warn($"Clipboard HTML flavour unreadable. type={ex.GetType().Name}");
             return false;
         }
     }
@@ -158,11 +187,14 @@ public static class ClipboardGuard
         {
             try
             {
-                return action();
+                var outcome = action();
+                if (attempt > 1) AppLog.Info($"Clipboard {operation} succeeded on attempt {attempt}.");
+                return outcome;
             }
-            catch (Exception) when (attempt < Attempts)
+            catch (Exception ex) when (attempt < Attempts)
             {
                 // Another process has the clipboard open; it will let go shortly.
+                AppLog.Warn($"Clipboard {operation} attempt {attempt} failed; retrying. type={ex.GetType().Name} hresult=0x{ex.HResult:X8}");
                 Thread.Sleep(RetryDelayMs);
             }
             catch (Exception ex)

@@ -31,7 +31,11 @@ public static class StartupRegistry
         try
         {
             using var key = Registry.CurrentUser.OpenSubKey(RunKey, writable: true);
-            if (key is null) return;
+            if (key is null)
+            {
+                AppLog.Warn("Start with Windows skipped: the Run key could not be opened.");
+                return;
+            }
 
             if (enabled)
             {

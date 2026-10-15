@@ -44,6 +44,7 @@ public partial class UpdateWindow : Window
             ? "No release notes were published."
             : release.Notes;
 
+        AppLog.Info($"Update window opened. version={release.Version} canInstall={_canInstall}");
         if (_canInstall) return;
 
         UpdateButton.Content = "Open download page";
@@ -57,10 +58,12 @@ public partial class UpdateWindow : Window
     {
         if (!_canInstall)
         {
+            AppLog.Info("Update window: opening the release page.");
             OpenReleasePage();
             return;
         }
 
+        AppLog.Info("Update window: Update now pressed.");
         BeginDownload();
 
         try
@@ -73,7 +76,10 @@ public partial class UpdateWindow : Window
             ShowStatus("Starting the installer. WriteFix will close and come back.");
 
             if (!_handOver(installer))
+            {
+                AppLog.Warn("Update window: installer handover failed.");
                 EndDownload("The installer could not be started. Try the download page instead.");
+            }
         }
         catch (OperationCanceledException)
         {
@@ -92,6 +98,7 @@ public partial class UpdateWindow : Window
     {
         if (_downloading)
         {
+            AppLog.Info("Update window: Cancel pressed during download.");
             _download?.Cancel();
             LaterButton.IsEnabled = false;
             ShowStatus("Cancelling...");
@@ -99,6 +106,7 @@ public partial class UpdateWindow : Window
         }
 
         VersionSkipped = SkipBox.IsChecked == true;
+        AppLog.Info($"Update window: Later pressed. skipThisVersion={VersionSkipped}");
         Close();
     }
 

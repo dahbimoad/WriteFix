@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using WriteFix.Interop;
 using WriteFix.Models;
 using WriteFix.Services.Ai;
@@ -68,10 +69,14 @@ public sealed class CorrectionCoordinator
         var lockedMode = _settings.Current.LockedMode;
         _mode = lockedMode ?? requested;
 
+        AppLog.Info($"Correction started. requested={requested} locked={lockedMode?.ToString() ?? "none"} mode={_mode}");
+
         // Read the caret before our own window can become the foreground window.
         var anchor = CaretLocator.GetAnchorPoint();
 
+        var stopwatch = Stopwatch.StartNew();
         var captured = await StaRunner.RunAsync(() => _capture.Capture(_settings.Current.MaxInputCharacters));
+        AppLog.Info($"Capture returned. status={captured.Status} ms={stopwatch.ElapsedMilliseconds}");
 
         if (captured.Status != CaptureStatus.Ok)
         {
@@ -79,7 +84,11 @@ public sealed class CorrectionCoordinator
             return;
         }
 
-        if (cancellation.IsCancellationRequested) return;
+        if (cancellation.IsCancellationRequested)
+        {
+            AppLog.Info("Correction superseded while capturing; card not shown.");
+            return;
+        }
 
         var window = new ResultWindow();
         _window = window;
@@ -90,9 +99,14 @@ public sealed class CorrectionCoordinator
 
         window.AcceptRequested += () => OnAccept(captured, window);
         window.CopyRequested += () => OnCopy(window);
-        window.RegenerateRequested += () => Rerun(captured, window, _mode);
+        window.RegenerateRequested += () =>
+        {
+            AppLog.Info($"Regenerate requested. mode={_mode}");
+            Rerun(captured, window, _mode);
+        };
         window.ModeSwitchRequested += mode =>
         {
+            AppLog.Info($"Mode switch requested. from={_mode} to={mode}");
             if (mode != _mode) Rerun(captured, window, mode);
         };
         window.Cancelled += () =>
@@ -103,18 +117,25 @@ public sealed class CorrectionCoordinator
         };
 
         window.Show();
+        AppLog.Info($"Card shown. captureMode={captured.Mode} method={captured.Method} canReplace={captured.CanReplaceAutomatically}");
 
         await RequestCorrectionAsync(captured, window, cancellation.Token);
     }
 
     private async Task RequestCorrectionAsync(CaptureResult captured, ResultWindow window, CancellationToken token)
     {
+        var stopwatch = Stopwatch.StartNew();
         var result = await _ai.CorrectAsync(captured.Text, _mode, token);
 
-        if (token.IsCancellationRequested || !window.IsLoaded) return;
+        if (token.IsCancellationRequested || !window.IsLoaded)
+        {
+            AppLog.Info($"AI answer discarded: card already gone. cancelled={token.IsCancellationRequested} ms={stopwatch.ElapsedMilliseconds}");
+            return;
+        }
 
         if (!result.Success)
         {
+            AppLog.Warn($"AI answer is an error; shown on the card. mode={_mode} ms={stopwatch.ElapsedMilliseconds}");
             window.ShowError(result.ErrorMessage);
             return;
         }
@@ -126,25 +147,34 @@ public sealed class CorrectionCoordinator
             ? "This message has formatting WriteFix would flatten, so it can only be copied."
             : "";
 
+        AppLog.Info($"AI answer shown. mode={_mode} chars={result.Text.Length} unchanged={result.Text == captured.Text} " +
+                    $"copyOnly={copyOnly} ms={stopwatch.ElapsedMilliseconds}");
         window.ShowResult(captured.Text, result.Text, canReplace: !copyOnly, notice);
     }
 
     private async void OnAccept(CaptureResult captured, ResultWindow window)
     {
+        AppLog.Info("Accept pressed.");
         var corrected = _corrected;
         window.CloseQuietly();
 
         var outcome = await StaRunner.RunAsync(() => _capture.Replace(captured, corrected));
 
-        if (outcome.Replaced) return;
+        if (outcome.Replaced)
+        {
+            AppLog.Info("Accept finished: text replaced in place.");
+            return;
+        }
 
         // Could not safely paste — put it on the clipboard so the work is not lost.
+        AppLog.Warn("Accept could not replace in place; falling back to the clipboard.");
         await StaRunner.RunAsync(() => ClipboardGuard.SetText(corrected));
         _notify($"{outcome.Message} Copied it to your clipboard instead.");
     }
 
     private async void OnCopy(ResultWindow window)
     {
+        AppLog.Info("Copy pressed.");
         var corrected = _corrected;
 
         await StaRunner.RunAsync(() => ClipboardGuard.SetText(corrected));
@@ -159,7 +189,11 @@ public sealed class CorrectionCoordinator
     private async void Rerun(CaptureResult captured, ResultWindow window, CorrectionMode mode)
     {
         var cancellation = _cancellation;
-        if (cancellation is null || cancellation.IsCancellationRequested) return;
+        if (cancellation is null || cancellation.IsCancellationRequested)
+        {
+            AppLog.Info("Rerun ignored: the correction is no longer active.");
+            return;
+        }
 
         _mode = mode;
         window.ShowWorking(captured.Mode, mode);
@@ -169,6 +203,9 @@ public sealed class CorrectionCoordinator
     /// <summary>Cancels any in-flight request and closes the card.</summary>
     public void Dismiss()
     {
+        if (_cancellation is not null || _window is not null)
+            AppLog.Info($"Dismissing the previous correction. inFlight={_cancellation is not null} cardOpen={_window?.IsLoaded == true}");
+
         _cancellation?.Cancel();
         _cancellation = null;
 

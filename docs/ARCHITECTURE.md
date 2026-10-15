@@ -249,10 +249,15 @@ text, keeping the tray process alive.
 Append-only text log, rotated at 5 MB with one backup. Logging failure never
 propagates.
 
-Recorded: startup and shutdown, hotkey registration, settings changes, capture method
-and target process name, character counts, HTTP status and duration, whether
-replacement and clipboard restoration succeeded, sanitised exception types and stack
-frames.
+Every line carries a timestamp, level and managed thread id.
+
+Recorded: startup (version, OS, runtime) and shutdown, hotkey registration, probes and
+presses, every tray, card, Settings and update-window action, settings loaded and saved,
+provider routing, capture classification and method, target process name, caret or
+mouse anchor and card placement, character counts, clipboard snapshot, retry and restore
+steps, HTTP status and duration, OpenCode server start, health and session lifecycle,
+update check and download progress, whether replacement succeeded, Win32 error codes,
+and sanitised exception types, HResults and stack frames.
 
 Never recorded: message text, corrected text, the system prompt, clipboard contents,
 API keys, authorization headers, or HTTP bodies. Exception *messages* are excluded

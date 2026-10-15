@@ -1,4 +1,5 @@
 using WriteFix.Models;
+using WriteFix.Services.Logging;
 using WriteFix.Services.Settings;
 
 namespace WriteFix.Services.Ai;
@@ -23,13 +24,19 @@ public sealed class AiRouter : IDisposable
 
     public OpenCodeClient OpenCode { get; }
 
-    public Task<CorrectionResult> CorrectAsync(string text, CorrectionMode mode, CancellationToken cancellationToken) =>
-        _settings.Current.Provider == AiProvider.OpenCode
+    public Task<CorrectionResult> CorrectAsync(string text, CorrectionMode mode, CancellationToken cancellationToken)
+    {
+        var provider = _settings.Current.Provider;
+        AppLog.Info($"Routing correction. provider={provider} mode={mode} chars={text.Length}");
+
+        return provider == AiProvider.OpenCode
             ? OpenCode.CorrectAsync(text, mode, cancellationToken)
             : ChatCompletions.CorrectAsync(text, mode, cancellationToken);
+    }
 
     public void Dispose()
     {
+        AppLog.Info("AI router disposing.");
         ChatCompletions.Dispose();
         _openCodeServer.Dispose();
     }

@@ -45,18 +45,30 @@ public sealed class TargetIdentity
     public string ProcessName { get; init; } = "";
     public int[] RuntimeId { get; init; } = [];
 
-    public bool SameElementAs(TargetIdentity? other)
+    /// <summary>For the log only; never the element's name, which can hold the user's text.</summary>
+    public string ControlType { get; init; } = "";
+    public string ClassName { get; init; } = "";
+
+    public bool SameElementAs(TargetIdentity? other) => MismatchWith(other) is null;
+
+    /// <summary>Null when <paramref name="other"/> is the same element; otherwise which rule failed, for the log.</summary>
+    public string? MismatchWith(TargetIdentity? other)
     {
-        if (other is null) return false;
-        if (ProcessId != other.ProcessId) return false;
+        if (other is null) return "no focused element";
+        if (ProcessId != other.ProcessId) return "different process";
 
         // Runtime ID is the strongest signal when both sides have one.
         if (RuntimeId.Length > 0 && other.RuntimeId.Length > 0)
-            return RuntimeId.AsSpan().SequenceEqual(other.RuntimeId);
+            return RuntimeId.AsSpan().SequenceEqual(other.RuntimeId) ? null : "different runtime id";
 
         // Otherwise fall back to the window handle, which is stable for classic controls.
-        return FocusedWindowHandle != IntPtr.Zero && FocusedWindowHandle == other.FocusedWindowHandle;
+        if (FocusedWindowHandle == IntPtr.Zero) return "no runtime id and no window handle";
+        return FocusedWindowHandle == other.FocusedWindowHandle ? null : "no runtime id and a different window handle";
     }
+
+    public string Describe() =>
+        $"process={ProcessName} pid={ProcessId} type={ControlType} class={ClassName} " +
+        $"hwnd={FocusedWindowHandle.ToInt64()} runtimeId=[{string.Join(",", RuntimeId)}]";
 }
 
 public sealed class CaptureResult

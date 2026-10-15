@@ -20,6 +20,8 @@ public sealed class TextCaptureService
 {
     private const int ClipboardSettleMs = 140;
     private const int PasteSettleMs = 260;
+    private const int FocusTimelineMs = 1000;
+    private const int FocusTimelineStepMs = 25;
 
     public CaptureResult Capture(int maxCharacters)
     {
@@ -29,6 +31,7 @@ public sealed class TextCaptureService
         }
         catch (ElementNotAvailableException)
         {
+            AppLog.Warn("Capture failed: the focused element disappeared.");
             return CaptureResult.Fail(CaptureStatus.Failed, "The window closed before WriteFix could read it.");
         }
         catch (Exception ex)
@@ -42,11 +45,17 @@ public sealed class TextCaptureService
     {
         var foreground = GetForegroundWindow();
         if (foreground == IntPtr.Zero)
+        {
+            AppLog.Warn("Capture refused: no foreground window.");
             return CaptureResult.Fail(CaptureStatus.Failed, "No active window.");
+        }
 
         var element = AutomationElement.FocusedElement;
         if (element is null)
+        {
+            AppLog.Warn("Capture refused: UI Automation reports no focused element.");
             return CaptureResult.Fail(CaptureStatus.UnsupportedField, "This field is not supported.");
+        }
 
         var identity = BuildIdentity(element, foreground);
 
@@ -60,10 +69,14 @@ public sealed class TextCaptureService
         if (selection is not null)
             return Finish(selection, CaptureMode.Selection, CaptureMethod.UiaTextPattern, false, identity, maxCharacters);
 
+        AppLog.Info("No UI Automation selection; reading the whole field.");
+
         // 2. Otherwise the whole field.
         var whole = TryReadWholeField(element, out var method);
         if (whole is not null)
             return Finish(whole, CaptureMode.WholeField, method, false, identity, maxCharacters);
+
+        AppLog.Info("UI Automation returned no text; using the clipboard fallback.");
 
         // 3. UIA gave us nothing usable. The control is already classified safe, so
         //    the clipboard round-trip is allowed.
@@ -96,7 +109,10 @@ public sealed class TextCaptureService
         }
 
         if (!info.IsEnabled)
+        {
+            AppLog.Info($"Refused: disabled control. type={info.ControlType.ProgrammaticName}");
             return CaptureResult.Fail(CaptureStatus.UnsupportedField, "This field is not editable.");
+        }
 
         var isTextControl =
             info.ControlType == ControlType.Edit ||
@@ -115,8 +131,13 @@ public sealed class TextCaptureService
         // A read-only value control can be copied from but never written to, so
         // treat it as unsupported rather than promising a replace we cannot do.
         if (hasValuePattern && valueObject is ValuePattern value && value.Current.IsReadOnly)
+        {
+            AppLog.Info($"Refused: read-only control. type={info.ControlType.ProgrammaticName}");
             return CaptureResult.Fail(CaptureStatus.UnsupportedField, "This field is read-only.");
+        }
 
+        AppLog.Info($"Control accepted. type={info.ControlType.ProgrammaticName} class={info.ClassName} " +
+                    $"framework={info.FrameworkId} textPattern={hasTextPattern} valuePattern={hasValuePattern}");
         return null;
     }
 
@@ -135,8 +156,9 @@ public sealed class TextCaptureService
 
             return className.ToString().Contains("PASSWORD", StringComparison.OrdinalIgnoreCase);
         }
-        catch
+        catch (Exception ex)
         {
+            AppLog.Error("Password-window check failed; relying on UI Automation alone.", ex);
             return false;
         }
     }
@@ -157,11 +179,13 @@ public sealed class TextCaptureService
             foreach (var range in ranges) builder.Append(range.GetText(-1));
 
             var value = builder.ToString();
+            AppLog.Info($"UI Automation selection read. ranges={ranges.Length} chars={value.Length}");
             return string.IsNullOrWhiteSpace(value) ? null : value;
         }
         catch (InvalidOperationException)
         {
             // The provider does not support selection; not an error.
+            AppLog.Info("UI Automation provider does not support selection.");
             return null;
         }
         catch (Exception ex)
@@ -220,6 +244,7 @@ public sealed class TextCaptureService
         {
             // Clearing first is what lets us tell "copied nothing" from "copied the
             // same thing that was already there".
+            AppLog.Info($"Clipboard capture starting. snapshotTaken={snapshot is not null}");
             ClipboardGuard.Clear();
 
             InputSender.SendCtrl(VK_C);
@@ -231,6 +256,7 @@ public sealed class TextCaptureService
             if (string.IsNullOrWhiteSpace(text))
             {
                 // Nothing was selected — take the whole field.
+                AppLog.Info("Clipboard capture: nothing selected; selecting the whole field.");
                 InputSender.SendCtrl(VK_A);
                 Thread.Sleep(60);
                 InputSender.SendCtrl(VK_C);
@@ -241,7 +267,10 @@ public sealed class TextCaptureService
             }
 
             if (string.IsNullOrWhiteSpace(text))
+            {
+                AppLog.Info("Clipboard capture: the field copied no text.");
                 return CaptureResult.Fail(CaptureStatus.NothingToFix, "Nothing to fix.");
+            }
 
             return Finish(text, mode, CaptureMethod.Clipboard, isRich, identity, maxCharacters);
         }
@@ -265,10 +294,14 @@ public sealed class TextCaptureService
         int maxCharacters)
     {
         if (string.IsNullOrWhiteSpace(text))
+        {
+            AppLog.Info($"Nothing to fix: captured text is blank. method={method}");
             return CaptureResult.Fail(CaptureStatus.NothingToFix, "Nothing to fix.");
+        }
 
         if (text.Length > maxCharacters)
         {
+            AppLog.Info($"Refused: text too long. chars={text.Length} max={maxCharacters} method={method}");
             return CaptureResult.Fail(
                 CaptureStatus.TooLong,
                 $"That is {text.Length:N0} characters. WriteFix handles up to {maxCharacters:N0} — select a smaller part.");
@@ -296,23 +329,38 @@ public sealed class TextCaptureService
     public ReplaceOutcome Replace(CaptureResult capture, string corrected)
     {
         if (capture.Target is null)
+        {
+            AppLog.Warn("Refused to paste: the capture has no target.");
             return ReplaceOutcome.Refused("WriteFix lost track of the original field.");
+        }
+
+        AppLog.Info($"Replace starting. process={capture.Target.ProcessName} mode={capture.Mode} chars={corrected.Length}");
 
         try
         {
             if (!RestoreForeground(capture.Target))
+            {
+                AppLog.Warn("Refused to paste: the original window could not be brought back.");
                 return ReplaceOutcome.Refused("WriteFix could not switch back to the original window.");
+            }
 
             var now = ReadCurrentTarget();
-            if (now is null || !capture.Target.SameElementAs(now))
+            var mismatch = capture.Target.MismatchWith(now);
+            if (now is null || mismatch is not null)
             {
-                AppLog.Warn("Refused to paste: focus moved to a different control.");
+                AppLog.Warn($"Refused to paste: focus moved to a different control. reason={mismatch}");
+                AppLog.Warn($"Refused to paste: expected {capture.Target.Describe()}");
+                AppLog.Warn($"Refused to paste: found {now?.Describe() ?? "nothing"}");
+                LogFocusTimeline(capture.Target, now);
                 return ReplaceOutcome.Refused("The cursor moved. Use Copy and paste it yourself.");
             }
 
             var element = AutomationElement.FocusedElement;
             if (element is null || Classify(element, now) is not null)
+            {
+                AppLog.Warn($"Refused to paste: the field no longer classifies as safe. elementFound={element is not null}");
                 return ReplaceOutcome.Refused("That field can no longer be edited safely.");
+            }
 
             return Paste(capture, corrected);
         }
@@ -360,12 +408,23 @@ public sealed class TextCaptureService
 
     private static bool RestoreForeground(TargetIdentity target)
     {
-        if (!IsWindow(target.ForegroundWindow)) return false;
+        if (!IsWindow(target.ForegroundWindow))
+        {
+            AppLog.Warn("Restore foreground: the original window no longer exists.");
+            return false;
+        }
 
         if (IsIconic(target.ForegroundWindow))
+        {
+            AppLog.Info("Restore foreground: the original window is minimised; restoring it.");
             ShowWindow(target.ForegroundWindow, SW_RESTORE);
+        }
 
-        if (GetForegroundWindow() == target.ForegroundWindow) return true;
+        if (GetForegroundWindow() == target.ForegroundWindow)
+        {
+            AppLog.Info("Restore foreground: already in front.");
+            return true;
+        }
 
         // Windows only grants SetForegroundWindow to the thread that owns the
         // current foreground; attaching to it borrows that right.
@@ -373,9 +432,10 @@ public sealed class TextCaptureService
         var ourThread = GetCurrentThreadId();
 
         var attached = targetThread != ourThread && AttachThreadInput(ourThread, targetThread, true);
+        bool requested;
         try
         {
-            SetForegroundWindow(target.ForegroundWindow);
+            requested = SetForegroundWindow(target.ForegroundWindow);
         }
         finally
         {
@@ -383,7 +443,40 @@ public sealed class TextCaptureService
         }
 
         Thread.Sleep(90);
-        return GetForegroundWindow() == target.ForegroundWindow;
+        var restored = GetForegroundWindow() == target.ForegroundWindow;
+        AppLog.Info($"Restore foreground: attached={attached} setForeground={requested} restored={restored}");
+        return restored;
+    }
+
+    /// <summary>
+    /// After a refused paste, watches where focus goes for a short while, so the log
+    /// tells "focus came back late" apart from "focus is somewhere else". Logs only
+    /// changes, and stops as soon as the original field has focus again.
+    /// </summary>
+    private static void LogFocusTimeline(TargetIdentity expected, TargetIdentity? first)
+    {
+        var lastSeen = first?.Describe() ?? "nothing";
+        var stopwatch = Stopwatch.StartNew();
+
+        while (stopwatch.ElapsedMilliseconds < FocusTimelineMs)
+        {
+            Thread.Sleep(FocusTimelineStepMs);
+
+            var now = ReadCurrentTarget();
+            if (expected.SameElementAs(now))
+            {
+                AppLog.Info($"Focus timeline: the original field had focus again after {stopwatch.ElapsedMilliseconds} ms.");
+                return;
+            }
+
+            var seen = now?.Describe() ?? "nothing";
+            if (seen == lastSeen) continue;
+
+            AppLog.Info($"Focus timeline: t={stopwatch.ElapsedMilliseconds} ms found {seen}");
+            lastSeen = seen;
+        }
+
+        AppLog.Info($"Focus timeline: the original field did not get focus back within {FocusTimelineMs} ms.");
     }
 
     private static TargetIdentity? ReadCurrentTarget()
@@ -395,8 +488,9 @@ public sealed class TextCaptureService
 
             return BuildIdentity(element, GetForegroundWindow());
         }
-        catch
+        catch (Exception ex)
         {
+            AppLog.Error("The currently focused element could not be read.", ex);
             return null;
         }
     }
@@ -407,9 +501,23 @@ public sealed class TextCaptureService
         var handle = IntPtr.Zero;
         int[] runtimeId = [];
 
-        try { processId = element.Current.ProcessId; } catch { /* provider hiccup */ }
-        try { handle = new IntPtr(element.Current.NativeWindowHandle); } catch { /* not all elements have one */ }
-        try { runtimeId = element.GetRuntimeId() ?? []; } catch { /* not always available */ }
+        try { processId = element.Current.ProcessId; }
+        catch (Exception ex) { AppLog.Error("Focused element process id unavailable.", ex); }
+
+        try { handle = new IntPtr(element.Current.NativeWindowHandle); }
+        catch (Exception ex) { AppLog.Error("Focused element window handle unavailable.", ex); }
+
+        try { runtimeId = element.GetRuntimeId() ?? []; }
+        catch (Exception ex) { AppLog.Error("Focused element runtime id unavailable.", ex); }
+
+        var controlType = "unknown";
+        var className = "unknown";
+        try
+        {
+            controlType = element.Current.ControlType.ProgrammaticName;
+            className = element.Current.ClassName;
+        }
+        catch (Exception ex) { AppLog.Error("Focused element type unavailable.", ex); }
 
         return new TargetIdentity
         {
@@ -418,6 +526,8 @@ public sealed class TextCaptureService
             ProcessId = processId,
             ProcessName = SafeProcessName(processId),
             RuntimeId = runtimeId,
+            ControlType = controlType,
+            ClassName = className,
         };
     }
 
@@ -429,8 +539,9 @@ public sealed class TextCaptureService
         {
             return Process.GetProcessById(processId).ProcessName;
         }
-        catch
+        catch (Exception ex)
         {
+            AppLog.Error($"Process name unavailable. pid={processId}", ex);
             return "unknown";
         }
     }

@@ -21,12 +21,17 @@ public sealed class SecretStore
 
     public string? Read()
     {
-        if (!HasKey) return null;
+        if (!HasKey)
+        {
+            AppLog.Info("API key read: no key file.");
+            return null;
+        }
 
         try
         {
             var protectedBytes = File.ReadAllBytes(AppPaths.ApiKeyFile);
             var plain = ProtectedData.Unprotect(protectedBytes, Entropy, DataProtectionScope.CurrentUser);
+            AppLog.Info($"API key read and decrypted. length={plain.Length}");
             return Encoding.UTF8.GetString(plain);
         }
         catch (Exception ex)
@@ -49,7 +54,12 @@ public sealed class SecretStore
 
     public void Delete()
     {
-        if (!HasKey) return;
+        if (!HasKey)
+        {
+            AppLog.Info("API key delete: there was no key.");
+            return;
+        }
+
         File.Delete(AppPaths.ApiKeyFile);
         AppLog.Info("API key deleted.");
     }

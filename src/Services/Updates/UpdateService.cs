@@ -50,16 +50,23 @@ public sealed class UpdateService : IDisposable
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(CheckTimeout);
 
+        AppLog.Info($"Update check sending. current={CurrentVersion}");
+        var stopwatch = Stopwatch.StartNew();
+
         try
         {
             using var response = await _http.GetAsync(LatestReleaseUrl, timeout.Token).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
+            {
+                AppLog.Warn($"Update check got a failure status. status={(int)response.StatusCode} ms={stopwatch.ElapsedMilliseconds}");
                 return UpdateCheck.Failed($"GitHub replied {(int)response.StatusCode}.");
+            }
 
             var payload = await response.Content.ReadAsStringAsync(timeout.Token).ConfigureAwait(false);
             var release = ParseRelease(payload);
 
-            AppLog.Info($"Update check finished. latest={release.Version} current={CurrentVersion}");
+            AppLog.Info($"Update check finished. latest={release.Version} current={CurrentVersion} " +
+                        $"hasInstaller={release.HasInstaller} installerBytes={release.InstallerSize} ms={stopwatch.ElapsedMilliseconds}");
 
             return IsNewer(release.Version, CurrentVersion)
                 ? UpdateCheck.Available(release)
@@ -67,10 +74,12 @@ public sealed class UpdateService : IDisposable
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            AppLog.Info("Update check cancelled.");
             return UpdateCheck.Failed("Cancelled.");
         }
         catch (OperationCanceledException)
         {
+            AppLog.Warn($"Update check timed out after {CheckTimeout.TotalSeconds:0}s.");
             return UpdateCheck.Failed("The check timed out.");
         }
         catch (HttpRequestException ex)
@@ -95,15 +104,22 @@ public sealed class UpdateService : IDisposable
             Path.GetTempPath(),
             release.InstallerName ?? $"WriteFix-Setup-{release.Version}.exe");
 
+        AppLog.Info($"Update {release.Version} download starting. url={release.InstallerUrl} target={target}");
+        var stopwatch = Stopwatch.StartNew();
+
         using var response = await _http
             .GetAsync(release.InstallerUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
             .ConfigureAwait(false);
+
+        if (!response.IsSuccessStatusCode)
+            AppLog.Warn($"Update download got a failure status. status={(int)response.StatusCode}");
         response.EnsureSuccessStatusCode();
 
         var total = response.Content.Headers.ContentLength ?? release.InstallerSize;
+        AppLog.Info($"Update download receiving. contentLength={response.Content.Headers.ContentLength?.ToString() ?? "none"} expectedBytes={total}");
         await CopyToFileAsync(response, target, total, progress, cancellationToken).ConfigureAwait(false);
 
-        AppLog.Info($"Update {release.Version} downloaded to {target}");
+        AppLog.Info($"Update {release.Version} downloaded to {target} ms={stopwatch.ElapsedMilliseconds}");
         return target;
     }
 
@@ -129,7 +145,10 @@ public sealed class UpdateService : IDisposable
         }
 
         if (total > 0 && done != total)
+        {
+            AppLog.Warn($"Update download incomplete. bytes={done} expected={total}");
             throw new IOException($"The download stopped at {done} of {total} bytes.");
+        }
     }
 
     /// <summary>
@@ -142,8 +161,8 @@ public sealed class UpdateService : IDisposable
         foreach (var argument in InstallerArguments(relaunchInBackground))
             start.ArgumentList.Add(argument);
 
-        Process.Start(start);
-        AppLog.Info($"Installer started: {installerPath}");
+        var process = Process.Start(start);
+        AppLog.Info($"Installer started: {installerPath} pid={process?.Id.ToString() ?? "unknown"} args={string.Join(" ", start.ArgumentList)}");
     }
 
     /// <summary>
@@ -178,13 +197,23 @@ public sealed class UpdateService : IDisposable
     public static bool InstalledBySetup()
     {
         using var perUser = Registry.CurrentUser.OpenSubKey(UninstallKey);
-        if (perUser is not null) return true;
+        if (perUser is not null)
+        {
+            AppLog.Info("Installed by setup: per-user uninstall key found.");
+            return true;
+        }
 
         using var perMachine = Registry.LocalMachine.OpenSubKey(UninstallKey);
-        if (perMachine is not null) return true;
+        if (perMachine is not null)
+        {
+            AppLog.Info("Installed by setup: per-machine uninstall key found.");
+            return true;
+        }
 
         var folder = AppContext.BaseDirectory;
-        return Directory.EnumerateFiles(folder, "unins*.exe").Any();
+        var hasUninstaller = Directory.EnumerateFiles(folder, "unins*.exe").Any();
+        AppLog.Info($"Installed by setup: no uninstall key; uninstaller in folder={hasUninstaller} folder={folder}");
+        return hasUninstaller;
     }
 
     /// <summary>"v1.2.0" -> (1, 2, 0). Junk sorts low rather than throwing, so one

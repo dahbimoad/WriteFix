@@ -43,7 +43,14 @@ public sealed class UpdateCoordinator : IDisposable
     /// </summary>
     public async void CheckInBackground()
     {
-        if (!IsAutomaticCheckDue(_settings.Current, DateTimeOffset.UtcNow)) return;
+        if (!IsAutomaticCheckDue(_settings.Current, DateTimeOffset.UtcNow))
+        {
+            AppLog.Info($"Automatic update check not due. enabled={_settings.Current.AutoCheckUpdates} " +
+                        $"lastCheckUtc={_settings.Current.LastUpdateCheck?.ToString("O") ?? "never"}");
+            return;
+        }
+
+        AppLog.Info("Automatic update check due; checking.");
 
         try
         {
@@ -63,7 +70,11 @@ public sealed class UpdateCoordinator : IDisposable
     /// </summary>
     public async Task<UpdateCheck> CheckAsync(bool manual)
     {
-        if (Busy) return UpdateCheck.Failed("A check is already running.");
+        if (Busy)
+        {
+            AppLog.Info($"Update check refused: one is already running. manual={manual}");
+            return UpdateCheck.Failed("A check is already running.");
+        }
 
         Busy = true;
         try
@@ -71,7 +82,10 @@ public sealed class UpdateCoordinator : IDisposable
             var result = await _updates.CheckAsync(CancellationToken.None);
             RecordCheckTime();
 
-            if (result.Release is not null && (manual || !IsSkipped(result.Release)))
+            var skipped = result.Release is not null && IsSkipped(result.Release);
+            AppLog.Info($"Update check result. manual={manual} ok={result.Ok} release={result.Release?.Version ?? "none"} skippedByUser={skipped}");
+
+            if (result.Release is not null && (manual || !skipped))
                 Show(result.Release);
 
             return result;
@@ -98,11 +112,13 @@ public sealed class UpdateCoordinator : IDisposable
     {
         if (_window is not null)
         {
+            AppLog.Info("Update window already open; activating it.");
             _window.Activate();
             return;
         }
 
         var owner = _visibleWindow();
+        AppLog.Info($"Showing the update window. version={release.Version} hasInstaller={release.HasInstaller} ownedBySettings={owner is not null}");
         _window = new UpdateWindow(_updates, release, HandOver);
 
         if (owner is not null)
@@ -120,6 +136,7 @@ public sealed class UpdateCoordinator : IDisposable
     {
         var skipped = _window?.VersionSkipped == true;
         _window = null;
+        AppLog.Info($"Update window closed. skipped={skipped}");
 
         if (!skipped) return;
 
@@ -137,6 +154,7 @@ public sealed class UpdateCoordinator : IDisposable
     private bool HandOver(string installerPath)
     {
         var relaunchInBackground = _visibleWindow() is null;
+        AppLog.Info($"Handing over to the installer. relaunchInBackground={relaunchInBackground}");
 
         try
         {

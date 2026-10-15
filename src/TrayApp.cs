@@ -56,12 +56,24 @@ public sealed class TrayApp : IDisposable
     private NotifyIcon BuildTrayIcon()
     {
         var menu = new ContextMenuStrip();
-        menu.Items.Add("Fix now", null, (_, _) => _coordinator.Run(CorrectionMode.Fix));
-        menu.Items.Add("Rephrase now", null, (_, _) => _coordinator.Run(CorrectionMode.Rephrase));
+        menu.Items.Add("Fix now", null, (_, _) => OnMenuCorrection(CorrectionMode.Fix));
+        menu.Items.Add("Rephrase now", null, (_, _) => OnMenuCorrection(CorrectionMode.Rephrase));
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("Settings…", null, (_, _) => OpenSettings());
-        menu.Items.Add("Check for updates…", null, (_, _) => CheckForUpdates());
-        menu.Items.Add("Exit", null, (_, _) => Application.Current.Shutdown());
+        menu.Items.Add("Settings…", null, (_, _) =>
+        {
+            AppLog.Info("Tray menu: Settings.");
+            OpenSettings();
+        });
+        menu.Items.Add("Check for updates…", null, (_, _) =>
+        {
+            AppLog.Info("Tray menu: Check for updates.");
+            CheckForUpdates();
+        });
+        menu.Items.Add("Exit", null, (_, _) =>
+        {
+            AppLog.Info("Tray menu: Exit.");
+            Application.Current.Shutdown();
+        });
 
         var icon = new NotifyIcon
         {
@@ -71,8 +83,18 @@ public sealed class TrayApp : IDisposable
             ContextMenuStrip = menu,
         };
 
-        icon.DoubleClick += (_, _) => OpenSettings();
+        icon.DoubleClick += (_, _) =>
+        {
+            AppLog.Info("Tray icon double-clicked.");
+            OpenSettings();
+        };
         return icon;
+    }
+
+    private void OnMenuCorrection(CorrectionMode mode)
+    {
+        AppLog.Info($"Tray menu: {mode} now.");
+        _coordinator.Run(mode);
     }
 
     private static Icon LoadIcon()
@@ -81,6 +103,7 @@ public sealed class TrayApp : IDisposable
         {
             var resource = Application.GetResourceStream(new Uri("pack://application:,,,/Assets/writefix.ico"));
             if (resource is not null) return new Icon(resource.Stream);
+            AppLog.Warn("Tray icon resource is missing; using the default application icon.");
         }
         catch (Exception ex)
         {
@@ -101,6 +124,7 @@ public sealed class TrayApp : IDisposable
         try
         {
             var result = await _updates.CheckAsync(manual: true);
+            AppLog.Info($"Tray update check done. ok={result.Ok} releaseOffered={result.Release is not null}");
             if (result.Release is null) Notify(result.Message);
         }
         catch (Exception ex)
@@ -114,6 +138,7 @@ public sealed class TrayApp : IDisposable
     {
         if (_settingsWindow is not null)
         {
+            AppLog.Info("Settings already open; bringing it to the front.");
             BringToFront(_settingsWindow);
             return;
         }
@@ -121,8 +146,13 @@ public sealed class TrayApp : IDisposable
         // The card and Settings competing for focus helps nobody.
         _coordinator.Dismiss();
 
+        AppLog.Info("Opening Settings.");
         _settingsWindow = new SettingsWindow(_settings, _secrets, _ai, _updates, _messages);
-        _settingsWindow.Closed += (_, _) => _settingsWindow = null;
+        _settingsWindow.Closed += (_, _) =>
+        {
+            AppLog.Info("Settings closed.");
+            _settingsWindow = null;
+        };
         _settingsWindow.Show();
         BringToFront(_settingsWindow);
     }
@@ -147,6 +177,7 @@ public sealed class TrayApp : IDisposable
     private void RegisterHotkeys()
     {
         var taken = _messages.RegisterSavedHotkeys(_settings.Current);
+        AppLog.Info($"Startup hotkey registration done. taken={taken.Count}");
 
         if (taken.Count > 0)
             Notify($"{string.Join(" and ", taken)} {(taken.Count == 1 ? "is" : "are")} already used by another app. " +
@@ -161,6 +192,7 @@ public sealed class TrayApp : IDisposable
 
     public void Dispose()
     {
+        AppLog.Info("Tray app shutting down.");
         _messages.Dispose();
         _ai.Dispose();
         _updates.Dispose();

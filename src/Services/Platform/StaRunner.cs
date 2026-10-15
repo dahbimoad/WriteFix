@@ -1,3 +1,5 @@
+using WriteFix.Services.Logging;
+
 namespace WriteFix.Services.Platform;
 
 /// <summary>
@@ -19,6 +21,7 @@ public static class StaRunner
             }
             catch (Exception ex)
             {
+                AppLog.Error("Work on the STA thread threw; handing the exception to the caller.", ex);
                 completion.SetException(ex);
             }
         })

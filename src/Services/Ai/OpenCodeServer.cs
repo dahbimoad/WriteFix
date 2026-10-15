@@ -65,6 +65,9 @@ public sealed class OpenCodeServer : IDisposable
         {
             if (_process is { HasExited: false } && _baseUri is not null) return _baseUri;
 
+            if (_process is { HasExited: true })
+                AppLog.Warn($"OpenCode server had exited; restarting it. exitCode={_process.ExitCode}");
+
             StopProcess();
             return await StartAsync(cancellationToken).ConfigureAwait(false);
         }
@@ -76,10 +79,15 @@ public sealed class OpenCodeServer : IDisposable
 
     private async Task<Uri> StartAsync(CancellationToken cancellationToken)
     {
-        var executable = FindExecutable()
-            ?? throw new OpenCodeException("The SDK is not installed. Install it with: npm i -g opencode-ai");
+        var executable = FindExecutable();
+        if (executable is null)
+        {
+            AppLog.Warn("OpenCode executable not found on PATH.");
+            throw new OpenCodeException("The SDK is not installed. Install it with: npm i -g opencode-ai");
+        }
 
         var port = FindFreeLoopbackPort();
+        AppLog.Info($"OpenCode server starting. exe={executable} port={port}");
         var baseUri = new Uri($"http://127.0.0.1:{port}/");
 
         Directory.CreateDirectory(AppPaths.OpenCodeWorkspace);
@@ -99,8 +107,12 @@ public sealed class OpenCodeServer : IDisposable
         startInfo.Environment["OPENCODE_SERVER_PASSWORD"] = _password;
 
         var stopwatch = Stopwatch.StartNew();
-        _process = Process.Start(startInfo)
-            ?? throw new OpenCodeException("The SDK could not be started.");
+        _process = Process.Start(startInfo);
+        if (_process is null)
+        {
+            AppLog.Warn("OpenCode process could not be started.");
+            throw new OpenCodeException("The SDK could not be started.");
+        }
 
         await WaitUntilHealthyAsync(_process, baseUri, cancellationToken).ConfigureAwait(false);
 
@@ -113,21 +125,32 @@ public sealed class OpenCodeServer : IDisposable
     {
         using var startup = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         startup.CancelAfter(StartupTimeout);
+        var polls = 0;
 
         try
         {
             while (true)
             {
-                if (process.HasExited)
-                    throw new OpenCodeException($"The SDK stopped while starting (exit code {process.ExitCode}).");
+                polls++;
 
-                if (await IsHealthyAsync(baseUri, startup.Token).ConfigureAwait(false)) return;
+                if (process.HasExited)
+                {
+                    AppLog.Warn($"OpenCode server exited while starting. exitCode={process.ExitCode} polls={polls}");
+                    throw new OpenCodeException($"The SDK stopped while starting (exit code {process.ExitCode}).");
+                }
+
+                if (await IsHealthyAsync(baseUri, startup.Token).ConfigureAwait(false))
+                {
+                    AppLog.Info($"OpenCode server healthy. polls={polls}");
+                    return;
+                }
 
                 await Task.Delay(HealthPollInterval, startup.Token).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
+            AppLog.Warn($"OpenCode server did not become healthy within {StartupTimeout.TotalSeconds:0}s. polls={polls}");
             StopProcess();
             throw new OpenCodeException($"The SDK did not start within {StartupTimeout.TotalSeconds:0}s.");
         }
@@ -141,6 +164,8 @@ public sealed class OpenCodeServer : IDisposable
         try
         {
             using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+                AppLog.Info($"OpenCode health check not ready. status={(int)response.StatusCode}");
             return response.IsSuccessStatusCode;
         }
         catch (HttpRequestException)
@@ -185,8 +210,9 @@ public sealed class OpenCodeServer : IDisposable
 
         try
         {
-            if (!_process.HasExited) _process.Kill(entireProcessTree: true);
-            AppLog.Info("OpenCode server stopped.");
+            var wasRunning = !_process.HasExited;
+            if (wasRunning) _process.Kill(entireProcessTree: true);
+            AppLog.Info($"OpenCode server stopped. killed={wasRunning}");
         }
         catch (Win32Exception ex)
         {

@@ -43,6 +43,10 @@ public sealed class AppMessageWindow : IDisposable
         _source.AddHook(WndProc);
 
         _showSettingsMessage = NativeMethods.RegisterWindowMessage(ShowSettingsMessageName);
+
+        if (_showSettingsMessage == 0)
+            AppLog.Warn("Show-Settings message could not be registered; a second launch will not open Settings.");
+        AppLog.Info($"Message window created. hwnd=0x{_source.Handle.ToInt64():X}");
     }
 
     /// <summary>Raised on the UI thread with the mode whose hotkey the user pressed.</summary>
@@ -58,9 +62,14 @@ public sealed class AppMessageWindow : IDisposable
     public static void BroadcastShowSettings()
     {
         var message = NativeMethods.RegisterWindowMessage(ShowSettingsMessageName);
-        if (message == 0) return;
+        if (message == 0)
+        {
+            AppLog.Warn("Show-Settings broadcast skipped: message could not be registered.");
+            return;
+        }
 
-        NativeMethods.PostMessage(NativeMethods.HWND_BROADCAST, message, IntPtr.Zero, IntPtr.Zero);
+        var posted = NativeMethods.PostMessage(NativeMethods.HWND_BROADCAST, message, IntPtr.Zero, IntPtr.Zero);
+        AppLog.Info($"Show-Settings broadcast sent. posted={posted}");
     }
 
     /// <summary>
@@ -88,8 +97,13 @@ public sealed class AppMessageWindow : IDisposable
     /// </summary>
     public void UnregisterHotkeys()
     {
+        if (_registered.Count > 0) AppLog.Info($"Releasing hotkeys. count={_registered.Count}");
+
         foreach (var mode in _registered.Keys)
-            NativeMethods.UnregisterHotKey(_source.Handle, HotkeyIdFor(mode));
+        {
+            if (!NativeMethods.UnregisterHotKey(_source.Handle, HotkeyIdFor(mode)))
+                AppLog.Warn($"{mode} hotkey could not be released. win32Error={System.Runtime.InteropServices.Marshal.GetLastWin32Error()}");
+        }
 
         _registered.Clear();
     }
@@ -101,12 +115,20 @@ public sealed class AppMessageWindow : IDisposable
     /// </summary>
     public bool IsHotkeyAvailable(HotkeySpec spec)
     {
-        if (_registered.ContainsValue(spec)) return true;
+        if (_registered.ContainsValue(spec))
+        {
+            AppLog.Info($"Hotkey probe {spec}: held by WriteFix, available.");
+            return true;
+        }
 
         if (!NativeMethods.RegisterHotKey(_source.Handle, ProbeHotkeyId, (uint)spec.Modifiers, spec.VirtualKey))
+        {
+            AppLog.Info($"Hotkey probe {spec}: taken. win32Error={System.Runtime.InteropServices.Marshal.GetLastWin32Error()}");
             return false;
+        }
 
         NativeMethods.UnregisterHotKey(_source.Handle, ProbeHotkeyId);
+        AppLog.Info($"Hotkey probe {spec}: available.");
         return true;
     }
 
@@ -117,7 +139,8 @@ public sealed class AppMessageWindow : IDisposable
 
         if (!NativeMethods.RegisterHotKey(_source.Handle, HotkeyIdFor(mode), modifiers, spec.VirtualKey))
         {
-            AppLog.Warn($"{mode} hotkey {spec} is already taken by another application.");
+            AppLog.Warn($"{mode} hotkey {spec} is already taken by another application. " +
+                        $"win32Error={System.Runtime.InteropServices.Marshal.GetLastWin32Error()}");
             return false;
         }
 
@@ -137,7 +160,12 @@ public sealed class AppMessageWindow : IDisposable
             if (_registered.ContainsKey(mode))
             {
                 handled = true;
+                AppLog.Info($"{mode} hotkey pressed.");
                 HotkeyPressed?.Invoke(mode);
+            }
+            else
+            {
+                AppLog.Warn($"Ignored a hotkey message with unknown id. id={wParam.ToInt32()}");
             }
 
             return IntPtr.Zero;
@@ -155,6 +183,7 @@ public sealed class AppMessageWindow : IDisposable
 
     public void Dispose()
     {
+        AppLog.Info("Message window disposing.");
         UnregisterHotkeys();
         _source.RemoveHook(WndProc);
         _source.Dispose();

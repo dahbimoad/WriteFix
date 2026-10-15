@@ -1,3 +1,4 @@
+using WriteFix.Services.Logging;
 using static WriteFix.Interop.NativeMethods;
 
 namespace WriteFix.Interop;
@@ -16,6 +17,7 @@ internal static class InputSender
     {
         ReleaseHeldModifiers();
 
+        AppLog.Info($"Sending Ctrl+{(char)key}.");
         var inputs = new[]
         {
             KeyDown(VK_CONTROL),
@@ -42,6 +44,7 @@ internal static class InputSender
 
         if (up.Length > 0)
         {
+            AppLog.Info($"Releasing held modifiers. count={up.Length}");
             Send(up);
             Thread.Sleep(30);
         }
@@ -54,6 +57,7 @@ internal static class InputSender
         var sent = SendInput((uint)inputs.Length, inputs, System.Runtime.InteropServices.Marshal.SizeOf<INPUT>());
         if (sent != inputs.Length)
         {
+            AppLog.Warn($"SendInput delivered {sent} of {inputs.Length} events. win32Error={System.Runtime.InteropServices.Marshal.GetLastWin32Error()}");
             // Usually means a more-privileged window (UAC, elevated app) owns the
             // foreground and is refusing our input. Caller treats this as a failure.
             throw new InvalidOperationException($"SendInput delivered {sent} of {inputs.Length} events.");

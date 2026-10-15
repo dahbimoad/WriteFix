@@ -5,6 +5,7 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using WriteFix.Models;
 using WriteFix.Services.Correction;
+using WriteFix.Services.Logging;
 using Brush = System.Windows.Media.Brush;
 using Point = System.Windows.Point;
 
@@ -48,6 +49,7 @@ public partial class ResultWindow : Window
 
     public void ShowWorking(CaptureMode captureMode, CorrectionMode mode)
     {
+        AppLog.Info($"Card state: working. captureMode={captureMode} mode={mode}");
         ModeChipText.Text = captureMode == CaptureMode.Selection ? "selection" : "whole message";
         HintText.Text = "Esc cancel";
 
@@ -78,6 +80,7 @@ public partial class ResultWindow : Window
 
     public void ShowResult(string original, string corrected, bool canReplace, string notice)
     {
+        AppLog.Info($"Card state: result. canReplace={canReplace} hasNotice={notice.Length > 0}");
         StopPulse();
 
         WorkingPanel.Visibility = Visibility.Collapsed;
@@ -100,6 +103,7 @@ public partial class ResultWindow : Window
 
     public void ShowError(string message)
     {
+        AppLog.Info("Card state: error.");
         StopPulse();
 
         WorkingPanel.Visibility = Visibility.Collapsed;
@@ -173,7 +177,11 @@ public partial class ResultWindow : Window
     private void PositionCard()
     {
         var source = PresentationSource.FromVisual(this);
-        if (source?.CompositionTarget is null) return;
+        if (source?.CompositionTarget is null)
+        {
+            AppLog.Warn("Card placement skipped: no presentation source yet.");
+            return;
+        }
 
         // Anchor and screen bounds are physical pixels; WPF positions in DIPs.
         var toDip = source.CompositionTarget.TransformFromDevice;
@@ -194,7 +202,8 @@ public partial class ResultWindow : Window
         if (left < workTopLeft.X) left = workTopLeft.X;
 
         // Flip above the caret when there is no room below.
-        if (top + ActualHeight > workBottomRight.Y)
+        var flipped = top + ActualHeight > workBottomRight.Y;
+        if (flipped)
         {
             var above = anchorDip.Y - ActualHeight - 22;
             top = above >= workTopLeft.Y ? above : workBottomRight.Y - ActualHeight;
@@ -204,6 +213,9 @@ public partial class ResultWindow : Window
 
         Left = left;
         Top = top;
+
+        AppLog.Info($"Card placed. anchorPx={_anchor.X},{_anchor.Y} dip={left:0},{top:0} size={ActualWidth:0}x{ActualHeight:0} " +
+                    $"flippedAbove={flipped} screen={screen.DeviceName}");
     }
 
     // ---- Working indicator -------------------------------------------------
@@ -236,7 +248,12 @@ public partial class ResultWindow : Window
 
     private void OnAccept(object sender, RoutedEventArgs e)
     {
-        if (_finished) return;
+        if (_finished)
+        {
+            AppLog.Info("Card: Accept ignored, the card is already finished.");
+            return;
+        }
+
         _finished = true;
         AcceptRequested?.Invoke();
     }
@@ -248,15 +265,28 @@ public partial class ResultWindow : Window
 
     private void OnCopy(object sender, RoutedEventArgs e)
     {
-        if (_finished) return;
+        if (_finished)
+        {
+            AppLog.Info("Card: Copy ignored, the card is already finished.");
+            return;
+        }
+
         _finished = true;
         CopyRequested?.Invoke();
     }
 
-    private void OnCancel(object sender, RoutedEventArgs e) => Finish();
+    private void OnCancel(object sender, RoutedEventArgs e)
+    {
+        AppLog.Info("Card: cancel pressed (Esc or close button).");
+        Finish();
+    }
 
     /// <summary>Clicking away dismisses the card, leaving the original untouched (FR-17).</summary>
-    private void OnDeactivated(object? sender, EventArgs e) => Finish();
+    private void OnDeactivated(object? sender, EventArgs e)
+    {
+        AppLog.Info($"Card lost focus; dismissing. alreadyFinished={_finished}");
+        Finish();
+    }
 
     private void Finish()
     {
@@ -268,6 +298,7 @@ public partial class ResultWindow : Window
     /// <summary>Closes without raising Cancelled — used once an action has been taken.</summary>
     public void CloseQuietly()
     {
+        AppLog.Info("Card closing.");
         _finished = true;
         Deactivated -= OnDeactivated;
         StopPulse();

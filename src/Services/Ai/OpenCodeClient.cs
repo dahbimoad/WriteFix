@@ -39,7 +39,13 @@ public sealed class OpenCodeClient
         var settings = _settings.Current;
 
         if (!TrySplitModel(settings.OpenCodeModel, out var providerId, out var modelId))
+        {
+            AppLog.Warn($"OpenCode correction refused: model is not provider/model. model={settings.OpenCodeModel}");
             return CorrectionResult.Error("Pick an SDK model in Settings, written as provider/model.");
+        }
+
+        AppLog.Info($"OpenCode correction sending. model={settings.OpenCodeModel} mode={mode} chars={text.Length} " +
+                    $"timeoutS={settings.RequestTimeoutSeconds}");
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(settings.RequestTimeoutSeconds));
@@ -50,6 +56,7 @@ public sealed class OpenCodeClient
         try
         {
             sessionId = await CreateSessionAsync(timeout.Token).ConfigureAwait(false);
+            AppLog.Info($"OpenCode session created. session={sessionId} ms={stopwatch.ElapsedMilliseconds}");
 
             var body = BuildPromptBody(providerId, modelId, settings.BuildSystemPrompt(mode), text);
             var payload = await SendForJsonAsync(HttpMethod.Post, $"session/{sessionId}/message{DirectoryQuery}", body, timeout.Token)
@@ -60,6 +67,7 @@ public sealed class OpenCodeClient
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            AppLog.Info($"OpenCode correction cancelled. ms={stopwatch.ElapsedMilliseconds}");
             return CorrectionResult.Error("Cancelled.");
         }
         catch (OperationCanceledException)
@@ -69,7 +77,7 @@ public sealed class OpenCodeClient
         }
         catch (OpenCodeException ex)
         {
-            AppLog.Warn("OpenCode correction failed with a reported error.");
+            AppLog.Warn($"OpenCode correction failed with a reported error. ms={stopwatch.ElapsedMilliseconds}");
             return CorrectionResult.Error(ex.Message);
         }
         catch (HttpRequestException ex)
@@ -97,19 +105,24 @@ public sealed class OpenCodeClient
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(45));
 
+        AppLog.Info("OpenCode model list loading.");
+
         try
         {
             var models = await ListModelsAsync(timeout.Token).ConfigureAwait(false);
+            AppLog.Info($"OpenCode model list loaded. models={models.Count}");
             return models.Count == 0
                 ? ([], "The SDK is running, but no provider is connected. Run: opencode auth login")
                 : (models, "");
         }
         catch (OperationCanceledException)
         {
+            AppLog.Warn("OpenCode model list timed out after 45s.");
             return ([], "The SDK did not answer in time.");
         }
         catch (OpenCodeException ex)
         {
+            AppLog.Warn("OpenCode model list failed with a reported error.");
             return ([], ex.Message);
         }
         catch (HttpRequestException ex)
@@ -131,7 +144,10 @@ public sealed class OpenCodeClient
         if (models.Count == 0) return (false, error);
 
         var wanted = model.Trim();
-        return models.Contains(wanted, StringComparer.Ordinal)
+        var found = models.Contains(wanted, StringComparer.Ordinal);
+        AppLog.Info($"OpenCode test finished. model={wanted} available={found} models={models.Count}");
+
+        return found
             ? (true, $"The SDK works. {models.Count} models available, including {wanted}.")
             : (false, $"The SDK works, but \"{wanted}\" is not one of its {models.Count} connected models. Load the list and pick one.");
     }
@@ -151,6 +167,8 @@ public sealed class OpenCodeClient
         var connected = root.GetProperty("connected").EnumerateArray()
             .Select(id => id.GetString())
             .ToHashSet(StringComparer.Ordinal);
+
+        AppLog.Info($"OpenCode providers. connected={string.Join(",", connected)} total={root.GetProperty("all").GetArrayLength()}");
 
         return root.GetProperty("all").EnumerateArray()
             .Where(provider => connected.Contains(provider.GetProperty("id").GetString()))
@@ -223,6 +241,8 @@ public sealed class OpenCodeClient
 
             if (!delete.IsSuccessStatusCode)
                 AppLog.Warn($"OpenCode session could not be deleted. status={(int)delete.StatusCode}");
+            else
+                AppLog.Info($"OpenCode session discarded. session={sessionId} abortStatus={(int)abort.StatusCode}");
         }
         catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or OpenCodeException)
         {
@@ -254,18 +274,27 @@ public sealed class OpenCodeClient
             info.TryGetProperty("error", out var error) &&
             error.ValueKind == JsonValueKind.Object)
         {
+            var errorName = error.TryGetProperty("name", out var name) ? name.GetString() : null;
+            AppLog.Warn($"OpenCode reply carried an error. name={errorName ?? "none"}");
             return CorrectionResult.Error(DescribeMessageError(error));
         }
 
         // Only visible text parts are the answer; reasoning, step markers and tool
         // parts are the agent's working, never the correction.
         var reply = new StringBuilder();
+        var partCount = 0;
+        var visibleCount = 0;
         foreach (var part in root.GetProperty("parts").EnumerateArray())
         {
-            if (IsVisibleText(part)) reply.Append(part.GetProperty("text").GetString());
+            partCount++;
+            if (!IsVisibleText(part)) continue;
+
+            visibleCount++;
+            reply.Append(part.GetProperty("text").GetString());
         }
 
         var cleaned = ModelOutput.Clean(reply.ToString());
+        AppLog.Info($"OpenCode reply parsed. parts={partCount} visibleText={visibleCount} rawChars={reply.Length} cleanedChars={cleaned.Length}");
         return string.IsNullOrWhiteSpace(cleaned)
             ? CorrectionResult.Error("The SDK returned nothing. Try Regenerate.")
             : CorrectionResult.Ok(cleaned);
@@ -316,6 +345,7 @@ public sealed class OpenCodeClient
         catch (JsonException)
         {
             // Not JSON; fall through to the status code.
+            AppLog.Warn($"OpenCode failure body is not JSON. status={(int)status}");
         }
 
         return $"The SDK replied {(int)status}.";

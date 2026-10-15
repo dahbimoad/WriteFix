@@ -4,6 +4,7 @@ using System.Windows.Input;
 using WriteFix.Interop;
 using WriteFix.Models;
 using WriteFix.Services.Ai;
+using WriteFix.Services.Logging;
 using WriteFix.Services.Platform;
 using WriteFix.Services.Settings;
 using WriteFix.Services.Updates;
@@ -113,6 +114,7 @@ public partial class SettingsWindow : Window
         Closed += (_, _) => ResumeHotkeys();
 
         UpdateKeyStatus();
+        AppLog.Info($"Settings window opened. connection={current.Provider} hasKey={_secrets.HasKey} startupRegistered={StartupBox.IsChecked == true}");
     }
 
     private void UpdateKeyStatus()
@@ -165,6 +167,7 @@ public partial class SettingsWindow : Window
     private void OnConnectionChanged(object sender, RoutedEventArgs e)
     {
         var openCode = SelectedConnection() == AiProvider.OpenCode;
+        AppLog.Info($"Settings: connection option changed. selected={SelectedConnection()}");
         OpenCodePanel.Visibility = openCode ? Visibility.Visible : Visibility.Collapsed;
         ApiPanel.Visibility = openCode ? Visibility.Collapsed : Visibility.Visible;
     }
@@ -179,6 +182,7 @@ public partial class SettingsWindow : Window
         if (_loading || ProviderBox.SelectedItem is not string baseUrl) return;
 
         var models = ModelsFor(baseUrl);
+        AppLog.Info($"Settings: provider changed. baseUrl={baseUrl} presetModels={models.Length} hasKey={_secrets.HasKey}");
 
         ModelBox.Items.Clear();
         foreach (var model in models) ModelBox.Items.Add(model);
@@ -203,12 +207,14 @@ public partial class SettingsWindow : Window
     /// <summary>Fills the model list from OpenCode, starting it if needed; the box keeps whatever was typed.</summary>
     private async void OnLoadOpenCodeModels(object sender, RoutedEventArgs e)
     {
+        AppLog.Info("Settings: Load SDK models pressed.");
         LoadOpenCodeModelsButton.IsEnabled = false;
         SetFooter("Starting the SDK and loading its models…");
 
         try
         {
             var (models, error) = await _ai.OpenCode.LoadModelsAsync(CancellationToken.None);
+            AppLog.Info($"Settings: SDK models result. models={models.Count}");
             if (models.Count == 0)
             {
                 SetFooter(error, isError: true);
@@ -230,12 +236,14 @@ public partial class SettingsWindow : Window
 
     private async void OnTestOpenCode(object sender, RoutedEventArgs e)
     {
+        AppLog.Info($"Settings: Test SDK pressed. model={OpenCodeModelBox.Text.Trim()}");
         TestOpenCodeButton.IsEnabled = false;
         SetFooter("Starting the SDK and checking the model…");
 
         try
         {
             var (ok, message) = await _ai.OpenCode.TestConnectionAsync(OpenCodeModelBox.Text, CancellationToken.None);
+            AppLog.Info($"Settings: SDK test result. ok={ok}");
             SetFooter(message, isError: !ok);
         }
         finally
@@ -262,6 +270,7 @@ public partial class SettingsWindow : Window
 
     private void OnLockedModeChanged(object sender, RoutedEventArgs e)
     {
+        AppLog.Info($"Settings: locked mode option changed. selected={SelectedLockedMode()?.ToString() ?? "none"}");
         ModeHelpText.Text = SelectedLockedMode() switch
         {
             CorrectionMode.Fix => "Both shortcuts only fix errors. The card hides its Fix / Rephrase switch.",
@@ -284,6 +293,7 @@ public partial class SettingsWindow : Window
     /// </summary>
     private void OnHotkeyGotFocus(object sender, KeyboardFocusChangedEventArgs e)
     {
+        AppLog.Info($"Settings: {ModeOf(sender)} shortcut box focused; waiting for keys.");
         SuspendHotkeys();
 
         ((TextBox)sender).Text = WaitingForKeysPrompt;
@@ -312,6 +322,7 @@ public partial class SettingsWindow : Window
 
         if (key == Key.Escape && Keyboard.Modifiers == ModifierKeys.None)
         {
+            AppLog.Info($"Settings: {ModeOf(sender)} shortcut entry cancelled with Esc.");
             Keyboard.ClearFocus();
             return;
         }
@@ -328,11 +339,13 @@ public partial class SettingsWindow : Window
         // Shift alone would steal a capital letter from every app.
         if (shiftOrNothing)
         {
+            AppLog.Info($"Settings: {mode} shortcut rejected, no Ctrl/Alt/Win. key={key}");
             SetHotkeyStatus(mode, "Add Ctrl, Alt or Win to the combination.", "Danger");
             return;
         }
 
         _hotkeys[mode] = new HotkeySpec(ReadModifiers(), key);
+        AppLog.Info($"Settings: {mode} shortcut typed. spec={_hotkeys[mode]}");
         ((TextBox)sender).Text = _hotkeys[mode].ToString();
         CheckHotkey(mode);
     }
@@ -355,6 +368,7 @@ public partial class SettingsWindow : Window
 
         if (spec == _hotkeys[otherMode])
         {
+            AppLog.Info($"Settings: {mode} shortcut {spec} rejected, same as the {otherMode} shortcut.");
             SetHotkeyStatus(mode, $"{spec} is already your {otherMode} shortcut.", "Danger");
             return false;
         }
@@ -375,6 +389,7 @@ public partial class SettingsWindow : Window
 
     private void SuspendHotkeys()
     {
+        AppLog.Info("Settings: global hotkeys suspended while a shortcut is typed.");
         _hotkeyHost.UnregisterHotkeys();
         _hotkeysSuspended = true;
     }
@@ -385,6 +400,7 @@ public partial class SettingsWindow : Window
         _hotkeysSuspended = false;
 
         var taken = _hotkeyHost.RegisterSavedHotkeys(_settings.Current);
+        AppLog.Info($"Settings: global hotkeys resumed. taken={taken.Count}");
         if (taken.Count > 0)
             SetFooter($"{string.Join(" and ", taken)} could not be registered again. Pick a different shortcut.", isError: true);
     }
@@ -401,10 +417,13 @@ public partial class SettingsWindow : Window
     private async void OnTestConnection(object sender, RoutedEventArgs e)
     {
         // Test what is typed if anything was typed, otherwise what is already stored.
-        var key = _keyEdited && ApiKeyBox.Password.Length > 0 ? ApiKeyBox.Password : _secrets.Read();
+        var typedKey = _keyEdited && ApiKeyBox.Password.Length > 0;
+        var key = typedKey ? ApiKeyBox.Password : _secrets.Read();
+        AppLog.Info($"Settings: Test connection pressed. keySource={(typedKey ? "typed" : "stored")}");
 
         if (string.IsNullOrWhiteSpace(key))
         {
+            AppLog.Info("Settings: Test connection refused, no key.");
             SetFooter("Paste an API key first.", isError: true);
             return;
         }
@@ -416,6 +435,7 @@ public partial class SettingsWindow : Window
         {
             var (ok, message) = await _ai.ChatCompletions.TestConnectionAsync(
                 ProviderBox.Text.Trim(), key, ModelBox.Text.Trim(), CancellationToken.None);
+            AppLog.Info($"Settings: Test connection result. ok={ok}");
             SetFooter(message, isError: !ok);
         }
         finally
@@ -430,12 +450,14 @@ public partial class SettingsWindow : Window
     /// </summary>
     private async void OnCheckForUpdates(object sender, RoutedEventArgs e)
     {
+        AppLog.Info("Settings: Check for updates pressed.");
         UpdateCheckButton.IsEnabled = false;
         SetFooter("Checking for updates…");
 
         try
         {
             var result = await _updates.CheckAsync(manual: true);
+            AppLog.Info($"Settings: update check result. ok={result.Ok} releaseOffered={result.Release is not null}");
             SetFooter(result.Message, isError: !result.Ok);
         }
         finally
@@ -446,6 +468,7 @@ public partial class SettingsWindow : Window
 
     private void OnClearKey(object sender, RoutedEventArgs e)
     {
+        AppLog.Info("Settings: Clear key pressed.");
         _secrets.Delete();
         ApiKeyBox.Clear();
         _keyEdited = false;
@@ -460,12 +483,14 @@ public partial class SettingsWindow : Window
 
     private void OnResetPrompt(object sender, RoutedEventArgs e)
     {
+        AppLog.Info("Settings: Fix instructions reset to the default.");
         PromptBox.Text = AppSettings.DefaultStyleInstructions;
         SetFooter("Fix instructions reset to the default.");
     }
 
     private void OnResetRephrasePrompt(object sender, RoutedEventArgs e)
     {
+        AppLog.Info("Settings: Rephrase instructions reset to the default.");
         RephrasePromptBox.Text = AppSettings.DefaultRephraseInstructions;
         SetFooter("Rephrase instructions reset to the default.");
     }
@@ -484,12 +509,15 @@ public partial class SettingsWindow : Window
 
     private void OnSave(object sender, RoutedEventArgs e)
     {
+        AppLog.Info("Settings: Save pressed.");
+
         // Check both before refusing, so each box shows its own verdict.
         var hotkeysValid = true;
         foreach (var mode in _hotkeys.Keys) hotkeysValid &= CheckHotkey(mode);
 
         if (!hotkeysValid)
         {
+            AppLog.Info("Settings: Save refused, a shortcut is not usable.");
             SetFooter("Nothing saved yet: choose a different shortcut first.", isError: true);
             return;
         }
@@ -519,6 +547,7 @@ public partial class SettingsWindow : Window
         _settings.Save(updated);
 
         var taken = _hotkeyHost.RegisterSavedHotkeys(updated);
+        AppLog.Info($"Settings: Save finished. hotkeysTaken={taken.Count}");
 
         UpdateKeyStatus();
         SetFooter(
@@ -526,7 +555,11 @@ public partial class SettingsWindow : Window
             isError: taken.Count > 0);
     }
 
-    private void OnRunInBackground(object sender, RoutedEventArgs e) => Close();
+    private void OnRunInBackground(object sender, RoutedEventArgs e)
+    {
+        AppLog.Info("Settings: Run in background pressed.");
+        Close();
+    }
 
     private void SetFooter(string message, bool isError = false)
     {

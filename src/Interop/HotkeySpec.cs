@@ -1,5 +1,6 @@
 using System.Windows.Input;
 using WriteFix.Models;
+using WriteFix.Services.Logging;
 
 namespace WriteFix.Interop;
 
@@ -18,8 +19,14 @@ public sealed record HotkeySpec(HotkeyModifiers Modifiers, Key Key)
         mode == CorrectionMode.Rephrase ? DefaultRephrase : Default;
 
     /// <summary>The shortcut saved for <paramref name="mode"/>, or that mode's default if the saved text is unusable.</summary>
-    public static HotkeySpec SavedFor(AppSettings settings, CorrectionMode mode) =>
-        TryParse(settings.HotkeyFor(mode), out var spec) ? spec : DefaultFor(mode);
+    public static HotkeySpec SavedFor(AppSettings settings, CorrectionMode mode)
+    {
+        var saved = settings.HotkeyFor(mode);
+        if (TryParse(saved, out var spec)) return spec;
+
+        AppLog.Warn($"{mode} shortcut \"{saved}\" in settings is unusable; using the default {DefaultFor(mode)}.");
+        return DefaultFor(mode);
+    }
 
     public static bool TryParse(string? text, out HotkeySpec spec)
     {
