@@ -19,7 +19,7 @@ enough to read in one sitting.
 | Tray icon | `System.Windows.Forms.NotifyIcon` |
 | Global hotkey | Win32 `RegisterHotKey` |
 | Text discovery | UI Automation, with a guarded clipboard fallback |
-| AI access | Any OpenAI-compatible REST API, or a local OpenCode server, via `HttpClient` — no SDK |
+| AI access | Any OpenAI-compatible REST API (DeepSeek by default) via `HttpClient` — no SDK |
 | Settings | JSON in `%LocalAppData%\WriteFix` |
 | API key | Windows DPAPI, current-user scope |
 | Diff highlighting | DiffPlex (the only NuGet dependency) |
@@ -131,9 +131,19 @@ A single non-streaming POST to `{apiBaseUrl}/chat/completions` with a reused
 `HttpClient`. No SDK: an API key is the credential, and a client library adds nothing
 here.
 
-The provider is a setting, not a constant. Groq, OpenRouter, Mistral and a local
-Ollama all accept the same request shape, so supporting them is a base URL rather than
-an abstraction. Settings offers presets; the field stays editable.
+The provider is a setting, not a constant. DeepSeek, Groq, OpenRouter, Mistral and a
+local Ollama all accept the same request shape, so supporting them is a base URL rather
+than an abstraction. Settings offers presets for DeepSeek (the default), Groq and
+OpenRouter; the field stays editable.
+
+DeepSeek gets one extra field, `"thinking": {"type": "disabled"}`. Its models think
+before answering unless told not to, which a correction does not need and which makes it
+slower and dearer. The field is sent only when the base URL's host is `api.deepseek.com`,
+because another provider may reject a field it does not know.
+
+A reply whose `finish_reason` is `length`, `content_filter`,
+`insufficient_system_resource` or `aborted` is refused with a message. It stopped before
+the end, and pasting it would delete the rest of the user's text.
 
 Non-streaming is deliberate — much simpler, and the card shows **Working…** while a
 fast model answers.
@@ -153,29 +163,6 @@ account's own limit, where waiting is the right advice.
 **Test connection** posts a one-token `"ping"` completion to the configured base URL.
 There is no key-check endpoint common to all providers — OpenRouter has one, Groq does
 not — and a minimal completion carries no message text.
-
-### OpenCode (second connection)
-
-Settings chooses **API key** (the base URL above) or **OpenCode**; `AiRouter` reads
-that choice on every request. OpenCode's SDK is JavaScript only, so WriteFix calls the
-same server API the SDK wraps (opencode.ai/docs/server) with `HttpClient`.
-
-- `OpenCodeServer` starts `opencode.exe serve` itself on first use: loopback only, a
-  free port, and a random Basic-auth password per launch. It runs in the empty
-  `%LocalAppData%\WriteFix\OpenCode` folder, stays warm, and is killed with its whole
-  process tree when WriteFix exits. The npm `opencode.cmd` shim is bypassed because
-  killing the shim leaves the real binary running.
-- `OpenCodeClient` sends each correction in a throwaway session created with a
-  deny-everything permission rule, with `tools: {"*": false}`, and deletes the session
-  afterwards. OpenCode is a coding agent and captured text is untrusted; with both
-  guards a prompt that asked for a file write produced no tool call and no file.
-- Only visible `text` parts are the answer; `reasoning`, step and tool parts are dropped.
-- The model is `providerID/modelID`; the list comes from `GET /provider`, connected
-  providers only. WriteFix stores no key for it: OpenCode uses its own logins.
-
-Known limits: OpenCode adds its own agent prompt to every request (about 7.7k input
-tokens in testing), so it is slower than a direct API. If WriteFix is killed rather
-than closed, the OpenCode process is left running.
 
 ---
 
@@ -253,10 +240,9 @@ Every line carries a timestamp, level and managed thread id.
 
 Recorded: startup (version, OS, runtime) and shutdown, hotkey registration, probes and
 presses, every tray, card, Settings and update-window action, settings loaded and saved,
-provider routing, capture classification and method, target process name, caret or
+capture classification and method, target process name, caret or
 mouse anchor and card placement, character counts, clipboard snapshot, retry and restore
-steps, HTTP status and duration, OpenCode server start, health and session lifecycle,
-update check and download progress, whether replacement succeeded, Win32 error codes,
+steps, HTTP status and duration, finish reason, update check and download progress, whether replacement succeeded, Win32 error codes,
 and sanitised exception types, HResults and stack frames.
 
 Never recorded: message text, corrected text, the system prompt, clipboard contents,
@@ -287,6 +273,8 @@ too, since they can echo content.
 | 2026-09-16 | Fix and Rephrase modes: two hotkeys, a card switch, and an optional lock in Settings | Requested explicitly. Rephrase has its own instructions so Fix rules like "same length" never constrain a rewrite |
 | 2026-09-16 | Test a shortcut when it is typed, refuse to save a taken one | Saving a taken hotkey used to unregister the old one and leave no hotkey at all |
 | 2026-09-16 | OpenCode as a second connection, via its server API with WriteFix starting the server | Requested explicitly. The SDK is JavaScript; the HTTP API it wraps needs no new dependency |
+| 2026-11-24 | OpenCode connection removed; DeepSeek added as a provider preset and made the default (`deepseek-flash`, thinking off) | Requested explicitly. DeepSeek speaks the same `/chat/completions` shape, so it is a preset, not a second client. Existing installs keep their base URL |
+| 2026-11-24 | Refuse replies that did not finish (`length`, `content_filter`, `insufficient_system_resource`, `aborted`) | A cut reply pasted back would silently delete the end of the user's text |
 
 ---
 

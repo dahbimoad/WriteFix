@@ -26,6 +26,13 @@ public partial class SettingsWindow : Window
 
     private static readonly Provider[] Providers =
     [
+        new(AppSettings.DeepSeekBaseUrl, "platform.deepseek.com/api_keys",
+        [
+            // The two ids api-docs.deepseek.com listed on 2026-11-24. Flash is the
+            // fast one; Pro is the larger model at about three times the price.
+            AppSettings.DefaultModel,
+            "deepseek-v4-pro",
+        ]),
         new(AppSettings.GroqBaseUrl, "console.groq.com/keys",
         [
             // Measured 2026-08-31 against the production prompt. gpt-oss-120b was
@@ -53,7 +60,7 @@ public partial class SettingsWindow : Window
 
     private readonly SettingsStore _settings;
     private readonly SecretStore _secrets;
-    private readonly AiRouter _ai;
+    private readonly ChatCompletionsClient _ai;
     private readonly UpdateCoordinator _updates;
 
     /// <summary>Owns the global hotkeys: suspended while a shortcut is typed, probed for conflicts, re-registered on save.</summary>
@@ -69,7 +76,7 @@ public partial class SettingsWindow : Window
     public SettingsWindow(
         SettingsStore settings,
         SecretStore secrets,
-        AiRouter ai,
+        ChatCompletionsClient ai,
         UpdateCoordinator updates,
         AppMessageWindow hotkeyHost)
     {
@@ -94,10 +101,6 @@ public partial class SettingsWindow : Window
         ModelBox.Text = current.Model;
         _loading = false;
 
-        OpenCodeModelBox.Text = current.OpenCodeModel;
-        ConnectionOpenCodeOption.IsChecked = current.Provider == AiProvider.OpenCode;
-        ConnectionApiOption.IsChecked = current.Provider == AiProvider.ChatCompletions;
-
         PromptBox.Text = current.StyleInstructions;
         RephrasePromptBox.Text = current.RephraseInstructions;
         FixHotkeyBox.Text = _hotkeys[CorrectionMode.Fix].ToString();
@@ -114,7 +117,7 @@ public partial class SettingsWindow : Window
         Closed += (_, _) => ResumeHotkeys();
 
         UpdateKeyStatus();
-        AppLog.Info($"Settings window opened. connection={current.Provider} hasKey={_secrets.HasKey} startupRegistered={StartupBox.IsChecked == true}");
+        AppLog.Info($"Settings window opened. baseUrl={current.ApiBaseUrl} hasKey={_secrets.HasKey} startupRegistered={StartupBox.IsChecked == true}");
     }
 
     private void UpdateKeyStatus()
@@ -159,18 +162,7 @@ public partial class SettingsWindow : Window
             : box.VerticalOffset > Slack;
     }
 
-    // ---- Connection --------------------------------------------------------
-
-    private AiProvider SelectedConnection() =>
-        ConnectionOpenCodeOption.IsChecked == true ? AiProvider.OpenCode : AiProvider.ChatCompletions;
-
-    private void OnConnectionChanged(object sender, RoutedEventArgs e)
-    {
-        var openCode = SelectedConnection() == AiProvider.OpenCode;
-        AppLog.Info($"Settings: connection option changed. selected={SelectedConnection()}");
-        OpenCodePanel.Visibility = openCode ? Visibility.Visible : Visibility.Collapsed;
-        ApiPanel.Visibility = openCode ? Visibility.Collapsed : Visibility.Visible;
-    }
+    // ---- Provider ----------------------------------------------------------
 
     /// <summary>
     /// Switching provider makes the current model id meaningless — a Groq id is not a
@@ -203,54 +195,6 @@ public partial class SettingsWindow : Window
     private static Provider? Match(string baseUrl) =>
         Providers.FirstOrDefault(p =>
             string.Equals(p.BaseUrl, baseUrl?.Trim().TrimEnd('/'), StringComparison.OrdinalIgnoreCase));
-
-    /// <summary>Fills the model list from OpenCode, starting it if needed; the box keeps whatever was typed.</summary>
-    private async void OnLoadOpenCodeModels(object sender, RoutedEventArgs e)
-    {
-        AppLog.Info("Settings: Load SDK models pressed.");
-        LoadOpenCodeModelsButton.IsEnabled = false;
-        SetFooter("Starting the SDK and loading its models…");
-
-        try
-        {
-            var (models, error) = await _ai.OpenCode.LoadModelsAsync(CancellationToken.None);
-            AppLog.Info($"Settings: SDK models result. models={models.Count}");
-            if (models.Count == 0)
-            {
-                SetFooter(error, isError: true);
-                return;
-            }
-
-            var typed = OpenCodeModelBox.Text;
-            OpenCodeModelBox.Items.Clear();
-            foreach (var model in models) OpenCodeModelBox.Items.Add(model);
-            OpenCodeModelBox.Text = typed;
-
-            SetFooter($"{models.Count} SDK models loaded. Open the list to pick one.");
-        }
-        finally
-        {
-            LoadOpenCodeModelsButton.IsEnabled = true;
-        }
-    }
-
-    private async void OnTestOpenCode(object sender, RoutedEventArgs e)
-    {
-        AppLog.Info($"Settings: Test SDK pressed. model={OpenCodeModelBox.Text.Trim()}");
-        TestOpenCodeButton.IsEnabled = false;
-        SetFooter("Starting the SDK and checking the model…");
-
-        try
-        {
-            var (ok, message) = await _ai.OpenCode.TestConnectionAsync(OpenCodeModelBox.Text, CancellationToken.None);
-            AppLog.Info($"Settings: SDK test result. ok={ok}");
-            SetFooter(message, isError: !ok);
-        }
-        finally
-        {
-            TestOpenCodeButton.IsEnabled = true;
-        }
-    }
 
     // ---- Mode --------------------------------------------------------------
 
@@ -433,7 +377,7 @@ public partial class SettingsWindow : Window
 
         try
         {
-            var (ok, message) = await _ai.ChatCompletions.TestConnectionAsync(
+            var (ok, message) = await _ai.TestConnectionAsync(
                 ProviderBox.Text.Trim(), key, ModelBox.Text.Trim(), CancellationToken.None);
             AppLog.Info($"Settings: Test connection result. ok={ok}");
             SetFooter(message, isError: !ok);
@@ -530,10 +474,8 @@ public partial class SettingsWindow : Window
         }
 
         var updated = _settings.Current.Clone();
-        updated.Provider = SelectedConnection();
         updated.ApiBaseUrl = ProviderBox.Text.Trim();
         updated.Model = string.IsNullOrWhiteSpace(ModelBox.Text) ? AppSettings.DefaultModel : ModelBox.Text.Trim();
-        updated.OpenCodeModel = OpenCodeModelBox.Text.Trim();
         updated.StyleInstructions = PromptBox.Text;
         updated.RephraseInstructions = RephrasePromptBox.Text;
         updated.LockedMode = SelectedLockedMode();

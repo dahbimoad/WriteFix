@@ -15,9 +15,10 @@ namespace WriteFix.Services.Ai;
 /// Talks to an OpenAI-compatible Chat Completions endpoint with a plain HttpClient —
 /// no AI SDK (ARCHITECTURE.md §2). Non-streaming: the card shows "Working…" meanwhile.
 ///
-/// The provider is whatever <see cref="AppSettings.ApiBaseUrl"/> points at. Groq,
-/// OpenRouter, Mistral and a local Ollama all speak this same request shape, so
-/// switching between them is a URL change rather than a code change.
+/// The provider is whatever <see cref="AppSettings.ApiBaseUrl"/> points at. DeepSeek,
+/// Groq, OpenRouter, Mistral and a local Ollama all speak this same request shape, so
+/// switching between them is a URL change rather than a code change. DeepSeek alone
+/// gets one extra field (see <see cref="WriteThinkingOff"/>).
 ///
 /// Only the system prompt and the captured text ever leave this machine. No window
 /// titles, process names, or diagnostic identifiers are sent.
@@ -49,7 +50,7 @@ public sealed class ChatCompletionsClient : IDisposable
         AppLog.Info($"Correction request sending. baseUrl={settings.ApiBaseUrl} model={settings.Model} mode={mode} " +
                     $"chars={text.Length} timeoutS={settings.RequestTimeoutSeconds}");
 
-        var body = BuildRequestBody(settings.Model, settings.BuildSystemPrompt(mode), text);
+        var body = BuildRequestBody(settings.ApiBaseUrl, settings.Model, settings.BuildSystemPrompt(mode), text);
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(settings.RequestTimeoutSeconds));
@@ -134,7 +135,7 @@ public sealed class ChatCompletionsClient : IDisposable
         {
             using var request = new HttpRequestMessage(HttpMethod.Post, CompletionsUrl(baseUrl));
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
-            request.Content = new StringContent(BuildPingBody(model), Encoding.UTF8, "application/json");
+            request.Content = new StringContent(BuildPingBody(baseUrl, model), Encoding.UTF8, "application/json");
 
             using var response = await _http.SendAsync(request, timeout.Token).ConfigureAwait(false);
             var payload = await response.Content.ReadAsStringAsync(timeout.Token).ConfigureAwait(false);
@@ -164,7 +165,27 @@ public sealed class ChatCompletionsClient : IDisposable
     private static string CompletionsUrl(string baseUrl) =>
         $"{baseUrl.TrimEnd('/')}/chat/completions";
 
-    private static string BuildPingBody(string model)
+    /// <summary>
+    /// DeepSeek thinks before answering unless told not to (api-docs.deepseek.com:
+    /// "if reasoning_effort is also omitted, thinking is enabled"). A correction needs
+    /// no chain of thought, and thinking makes it slower and dearer, so it is turned
+    /// off. Other providers get nothing extra: a field they do not know could be
+    /// rejected.
+    /// </summary>
+    private static void WriteThinkingOff(Utf8JsonWriter writer, string baseUrl)
+    {
+        if (!IsDeepSeek(baseUrl)) return;
+
+        writer.WriteStartObject("thinking");
+        writer.WriteString("type", "disabled");
+        writer.WriteEndObject();
+    }
+
+    private static bool IsDeepSeek(string baseUrl) =>
+        Uri.TryCreate(baseUrl.Trim(), UriKind.Absolute, out var uri)
+        && uri.Host.Equals(new Uri(AppSettings.DeepSeekBaseUrl).Host, StringComparison.OrdinalIgnoreCase);
+
+    private static string BuildPingBody(string baseUrl, string model)
     {
         using var stream = new MemoryStream();
         using (var writer = new Utf8JsonWriter(stream))
@@ -172,6 +193,7 @@ public sealed class ChatCompletionsClient : IDisposable
             writer.WriteStartObject();
             writer.WriteString("model", model);
             writer.WriteNumber("max_tokens", 1);
+            WriteThinkingOff(writer, baseUrl);
 
             writer.WriteStartArray("messages");
             writer.WriteStartObject();
@@ -186,7 +208,7 @@ public sealed class ChatCompletionsClient : IDisposable
         return Encoding.UTF8.GetString(stream.ToArray());
     }
 
-    private static string BuildRequestBody(string model, string systemPrompt, string text)
+    private static string BuildRequestBody(string baseUrl, string model, string systemPrompt, string text)
     {
         using var stream = new MemoryStream();
         using (var writer = new Utf8JsonWriter(stream))
@@ -194,6 +216,7 @@ public sealed class ChatCompletionsClient : IDisposable
             writer.WriteStartObject();
             writer.WriteString("model", model);
             writer.WriteBoolean("stream", false);
+            WriteThinkingOff(writer, baseUrl);
 
             writer.WriteStartArray("messages");
 
@@ -247,6 +270,12 @@ public sealed class ChatCompletionsClient : IDisposable
             AppLog.Info($"Completion parsed. choices={choices.GetArrayLength()} finishReason={finishReason} " +
                         $"rawChars={content.Length} cleanedChars={cleaned.Length}");
 
+            if (DescribeCutReply(finishReason) is { } cut)
+            {
+                AppLog.Warn($"Completion refused: the reply did not finish. finishReason={finishReason}");
+                return CorrectionResult.Error(cut);
+            }
+
             return string.IsNullOrWhiteSpace(cleaned)
                 ? CorrectionResult.Error("The AI returned nothing. Try Regenerate.")
                 : CorrectionResult.Ok(cleaned);
@@ -257,6 +286,20 @@ public sealed class ChatCompletionsClient : IDisposable
             return CorrectionResult.Error("The AI sent a response WriteFix could not read.");
         }
     }
+
+    /// <summary>
+    /// A reply that stopped early holds only part of the message, and pasting it would
+    /// silently delete the rest of what the user wrote. The values are the OpenAI ones
+    /// plus DeepSeek's <c>insufficient_system_resource</c> and <c>aborted</c>. Null
+    /// means the reply finished normally, or the provider sent no reason.
+    /// </summary>
+    private static string? DescribeCutReply(string? finishReason) => finishReason switch
+    {
+        "length" => "The reply was cut off before the end. Try Regenerate, or correct a shorter text.",
+        "content_filter" => "The provider's content filter stopped the reply.",
+        "insufficient_system_resource" or "aborted" => "The provider stopped the reply before the end. Try Regenerate.",
+        _ => null,
+    };
 
     private static string DescribeHttpFailure(HttpStatusCode status, string payload, AppSettings settings)
     {

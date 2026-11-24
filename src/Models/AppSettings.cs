@@ -17,17 +17,16 @@ public sealed class AppSettings
     /// <summary>Where WriteFix pointed before it could talk to more than one provider.</summary>
     public const string OpenRouterBaseUrl = "https://openrouter.ai/api/v1";
 
-    public const string DefaultBaseUrl = GroqBaseUrl;
+    /// <summary>DeepSeek's OpenAI-format endpoint (api-docs.deepseek.com, read 2026-11-24).</summary>
+    public const string DeepSeekBaseUrl = "https://api.deepseek.com";
+
+    public const string DefaultBaseUrl = DeepSeekBaseUrl;
 
     /// <summary>
-    /// Measured 2026-08-31 against the production prompt: fastest of Groq's free
-    /// models (~570ms EN, ~820ms FR), correct French elision and accents, and it
-    /// keeps its reasoning in a separate field instead of leaking it into the answer.
+    /// DeepSeek's fast model (served by DeepSeek-V4.1-Flash on 2026-11-24). WriteFix
+    /// turns its thinking mode off, so a correction is one quick answer.
     /// </summary>
-    public const string DefaultModel = "openai/gpt-oss-120b";
-
-    /// <summary>OpenCode Zen's free default; it answered EN and FR correctly in testing on 2026-09-16.</summary>
-    public const string DefaultOpenCodeModel = "opencode/big-pickle";
+    public const string DefaultModel = "deepseek-flash";
 
     public const string DefaultHotkey = "Ctrl+Alt+F";
     public const string DefaultRephraseHotkey = "Ctrl+Alt+R";
@@ -102,29 +101,19 @@ public sealed class AppSettings
         """;
 
     /// <summary>
-    /// Whether corrections go to the API at <see cref="ApiBaseUrl"/> or to OpenCode.
-    /// A settings.json written before this existed has no value, which reads as
-    /// <see cref="AiProvider.ChatCompletions"/> — exactly what that install was using.
-    /// </summary>
-    public AiProvider Provider { get; set; } = AiProvider.ChatCompletions;
-
-    /// <summary>OpenCode model as <c>providerID/modelID</c>, e.g. <c>opencode/big-pickle</c>.</summary>
-    public string OpenCodeModel { get; set; } = DefaultOpenCodeModel;
-
-    /// <summary>
     /// Base URL of an OpenAI-compatible API, without a trailing slash and without
     /// <c>/chat/completions</c>.
     ///
     /// Deliberately starts empty rather than at <see cref="DefaultBaseUrl"/>: a
     /// settings.json written before this field existed simply has no value for it,
-    /// and System.Text.Json would otherwise leave the property at the Groq default
-    /// and silently send an existing user's OpenRouter key to Groq. Empty means
+    /// and System.Text.Json would otherwise leave the property at the DeepSeek default
+    /// and silently send an existing user's OpenRouter key to DeepSeek. Empty means
     /// "not decided yet", which lets <see cref="Normalize"/> and
     /// <see cref="AdoptLegacyProvider"/> tell a fresh install from an upgrade.
     /// </summary>
     public string ApiBaseUrl { get; set; } = "";
 
-    /// <summary>Model id as the configured provider spells it, e.g. <c>openai/gpt-oss-120b</c>.</summary>
+    /// <summary>Model id as the configured provider spells it, e.g. <c>deepseek-flash</c>.</summary>
     public string Model { get; set; } = DefaultModel;
 
     /// <summary>
@@ -213,7 +202,7 @@ public sealed class AppSettings
     /// Called only for a settings.json that already existed on disk. Such a file
     /// predates multi-provider support, so its stored API key is an OpenRouter key
     /// and it must keep talking to OpenRouter — upgrading WriteFix is not consent to
-    /// switch providers. Only a first-run install falls through to the Groq default.
+    /// switch providers. Only a first-run install falls through to the DeepSeek default.
     /// </summary>
     public void AdoptLegacyProvider()
     {
@@ -228,8 +217,6 @@ public sealed class AppSettings
         if (string.IsNullOrWhiteSpace(Model)) Model = DefaultModel;
         if (string.IsNullOrWhiteSpace(Hotkey)) Hotkey = DefaultHotkey;
         if (string.IsNullOrWhiteSpace(RephraseHotkey)) RephraseHotkey = DefaultRephraseHotkey;
-        if (string.IsNullOrWhiteSpace(OpenCodeModel)) OpenCodeModel = DefaultOpenCodeModel;
-        if (!Enum.IsDefined(Provider)) Provider = AiProvider.ChatCompletions;
         if (LockedMode is { } locked && !Enum.IsDefined(locked)) LockedMode = null;
 
         // Reached by a fresh install, or by a user who cleared the box.

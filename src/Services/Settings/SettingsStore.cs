@@ -34,7 +34,7 @@ public sealed class SettingsStore
 
                 // The file predates multi-provider support if it carries no base URL,
                 // so keep that install on OpenRouter rather than pointing an existing
-                // OpenRouter key at the new Groq default.
+                // OpenRouter key at the new DeepSeek default.
                 if (string.IsNullOrWhiteSpace(Current.ApiBaseUrl))
                     AppLog.Info("settings.json has no base URL; keeping this older install on OpenRouter.");
                 Current.AdoptLegacyProvider();
@@ -53,8 +53,8 @@ public sealed class SettingsStore
 
         Current.Normalize();
 
-        AppLog.Info($"Settings loaded. provider={Current.Provider} baseUrl={Current.ApiBaseUrl} model={Current.Model} " +
-                    $"openCodeModel={Current.OpenCodeModel} hotkey={Current.Hotkey} rephraseHotkey={Current.RephraseHotkey} " +
+        AppLog.Info($"Settings loaded. baseUrl={Current.ApiBaseUrl} model={Current.Model} " +
+                    $"hotkey={Current.Hotkey} rephraseHotkey={Current.RephraseHotkey} " +
                     $"lockedMode={Current.LockedMode?.ToString() ?? "none"} startWithWindows={Current.StartWithWindows} " +
                     $"autoCheckUpdates={Current.AutoCheckUpdates} hasKey={Current.HasApiKey} " +
                     $"timeoutS={Current.RequestTimeoutSeconds} maxChars={Current.MaxInputCharacters}");
@@ -77,8 +77,8 @@ public sealed class SettingsStore
 
         Current = settings;
 
-        AppLog.Info($"Settings saved. provider={settings.Provider} baseUrl={settings.ApiBaseUrl} model={settings.Model} " +
-                    $"openCodeModel={settings.OpenCodeModel} hotkey={settings.Hotkey} rephraseHotkey={settings.RephraseHotkey} " +
+        AppLog.Info($"Settings saved. baseUrl={settings.ApiBaseUrl} model={settings.Model} " +
+                    $"hotkey={settings.Hotkey} rephraseHotkey={settings.RephraseHotkey} " +
                     $"lockedMode={settings.LockedMode?.ToString() ?? "none"} startWithWindows={settings.StartWithWindows} " +
                     $"autoCheckUpdates={settings.AutoCheckUpdates} hasKey={settings.HasApiKey}");
         Changed?.Invoke(settings);

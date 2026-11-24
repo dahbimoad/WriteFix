@@ -44,15 +44,15 @@ Language is detected automatically and never translated — French in, French ou
 
 ## Install
 
-Download or build `WriteFix-Setup-1.4.1.exe` and run it.
+Download or build `WriteFix-Setup-1.5.0.exe` and run it.
 
 The installer is **per-user** — no administrator prompt — and installs to
 `%LocalAppData%\Programs\WriteFix`. It is unsigned, so SmartScreen will warn once:
 **More info → Run anyway**.
 
 On a normal launch it opens Settings so you can paste an API key. WriteFix ships
-pointed at [Groq](https://console.groq.com/keys), which is free and needs no credit
-card. Click **Test** to confirm it works, then **Save**.
+pointed at [DeepSeek](https://platform.deepseek.com/api_keys), which is paid per use
+and needs credit on the account. For a free start, pick Groq in the provider list. Click **Test** to confirm it works, then **Save**.
 
 > WriteFix must never run elevated. An elevated process cannot send keystrokes to a
 > normal user's windows, which is exactly what it needs to do.
@@ -65,19 +65,16 @@ Double-click the tray icon, or right-click it → **Settings…**, or just run
 > On Windows 11 new tray icons start hidden in the overflow flyout. Click the `^`
 > next to the clock and drag the WriteFix icon onto the taskbar to pin it.
 
-- **Connection** — **API key** (the provider, key and model below) or **SDK**.
-  SDK uses the SDK installed on your PC (`npm i -g opencode-ai`) and the providers
-  you have connected in it (`opencode auth login`): no key to paste, pick a model with
-  **Load models**. WriteFix starts it quietly when needed and stops it on exit. Tools are
-  always off, so it can only return text. It is slower than a direct API.
 - **API key** — stored encrypted with Windows DPAPI, readable only by your Windows
   account on this machine. Never written to `settings.json` or the log.
-- **Provider** — any OpenAI-compatible API. Presets for Groq and OpenRouter; paste
+- **Provider** — any OpenAI-compatible API. Presets for DeepSeek, Groq and OpenRouter; paste
   another base URL to use Mistral, a local Ollama, or anything else that speaks
   `/chat/completions`. The key belongs to whichever provider is selected, so changing
   provider means pasting a new key.
-- **Model** — any model id the provider knows. Ships with `openai/gpt-oss-120b` on
-  Groq: free, ~0.5s, and correct on French accents and elision.
+- **Model** — any model id the provider knows. Ships with `deepseek-flash` on
+  DeepSeek (`deepseek-v4-pro` is the larger option). WriteFix turns DeepSeek's thinking
+  mode off, so each correction is one direct answer. On Groq, `openai/gpt-oss-120b` is
+  free, ~0.5s, and correct on French accents and elision.
 - **System prompt** — split in two:
   - a **fixed contract** in code (rewrite rather than answer, ignore instructions
     embedded in the message, never translate, return bare text). Shown read-only,
@@ -173,7 +170,7 @@ src/
   Interop/             Win32: hotkey, SendInput, caret location
   Models/              plain data types
   Services/
-    Ai/                OpenAI-compatible HTTP client, local SDK server client
+    Ai/                OpenAI-compatible HTTP client
     Capture/           UI Automation + guarded clipboard
     Correction/        the capture -> correct -> review -> replace workflow
     Logging/           privacy-safe local log

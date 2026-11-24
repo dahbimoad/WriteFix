@@ -114,21 +114,7 @@
                         </Grid>
 
                         <StackPanel Margin="20,18,20,20">
-                            <TextBlock Text="Connection" Style="{StaticResource FieldLabel}" />
-                            <Border Style="{StaticResource SegmentTrack}">
-                                <StackPanel Orientation="Horizontal">
-                                    <RadioButton x:Name="ConnectionApiOption" GroupName="Connection"
-                                                 Content="API key" Style="{StaticResource SegmentOption}"
-                                                 Checked="OnConnectionChanged" />
-                                    <RadioButton x:Name="ConnectionOpenCodeOption" GroupName="Connection"
-                                                 Content="SDK" Style="{StaticResource SegmentOption}"
-                                                 Checked="OnConnectionChanged" />
-                                </StackPanel>
-                            </Border>
-
-                            <Border Height="1" Background="{StaticResource Border}" Margin="0,18" />
-
-                            <StackPanel x:Name="ApiPanel">
+                            <StackPanel>
                                 <TextBlock Text="Provider" Style="{StaticResource FieldLabel}" />
                                 <ComboBox x:Name="ProviderBox" IsEditable="True"
                                           Style="{StaticResource FieldCombo}"
@@ -137,7 +123,7 @@
                                           PreviewMouseWheel="OnNestedScroll"
                                           SelectionChanged="OnProviderChanged" />
                                 <TextBlock Style="{StaticResource HelpText}"
-                                           Text="Any OpenAI-compatible API. Groq is free and fastest; pick one, then paste that provider's key below." />
+                                           Text="DeepSeek, Groq, OpenRouter or any OpenAI-compatible API. Pick one, then paste that provider's key below." />
 
                                 <Border Height="1" Background="{StaticResource Border}" Margin="0,18" />
 
@@ -172,31 +158,6 @@
                                           PreviewMouseWheel="OnNestedScroll" />
                                 <TextBlock Style="{StaticResource HelpText}"
                                            Text="Free models are rate-limited. If corrections start failing, try another model here before touching your key." />
-                            </StackPanel>
-
-                            <StackPanel x:Name="OpenCodePanel" Visibility="Collapsed">
-                                <TextBlock Text="SDK model" Style="{StaticResource FieldLabel}" />
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-
-                                    <ComboBox Grid.Column="0" x:Name="OpenCodeModelBox" IsEditable="True"
-                                              Style="{StaticResource FieldCombo}"
-                                              AutomationProperties.Name="SDK model"
-                                              MaxDropDownHeight="260"
-                                              PreviewMouseWheel="OnNestedScroll" />
-                                    <Button Grid.Column="1" x:Name="LoadOpenCodeModelsButton" Content="Load models"
-                                            Margin="9,0,0,0" Style="{StaticResource QuietButton}"
-                                            Click="OnLoadOpenCodeModels" />
-                                    <Button Grid.Column="2" x:Name="TestOpenCodeButton" Content="Test"
-                                            Margin="8,0,0,0" Style="{StaticResource QuietButton}"
-                                            Click="OnTestOpenCode" />
-                                </Grid>
-                                <TextBlock Style="{StaticResource HelpText}"
-                                           Text="Written as provider/model. WriteFix starts the SDK quietly when it is needed and uses the providers you connected in it (opencode auth login), so there is no key to paste here. Tools are always off: the SDK can only return text." />
                             </StackPanel>
                         </StackPanel>
                     </StackPanel>

@@ -23,7 +23,7 @@ public sealed class TrayApp : IDisposable
     private readonly NotifyIcon _icon;
     private readonly SettingsStore _settings;
     private readonly SecretStore _secrets;
-    private readonly AiRouter _ai;
+    private readonly ChatCompletionsClient _ai;
     private readonly AppMessageWindow _messages;
     private readonly CorrectionCoordinator _coordinator;
     private readonly UpdateCoordinator _updates;
@@ -36,7 +36,7 @@ public sealed class TrayApp : IDisposable
         _settings.Load();
 
         _secrets = new SecretStore();
-        _ai = new AiRouter(_settings, _secrets);
+        _ai = new ChatCompletionsClient(_settings, _secrets);
         _coordinator = new CorrectionCoordinator(new TextCaptureService(), _ai, _settings, Notify);
         _updates = new UpdateCoordinator(_settings, () => _settingsWindow);
 
